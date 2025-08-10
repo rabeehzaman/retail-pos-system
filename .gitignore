@@ -48,3 +48,6 @@ Thumbs.db
 
 # Exclude TransferOrderPOS directory
 TransferOrderPOS/
+
+# MCP configuration with secrets
+.mcp.json
