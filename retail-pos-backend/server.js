@@ -17,13 +17,32 @@ let accessToken = null;
 let refreshToken = null;
 let tokenExpiresAt = null;
 
-// Load tokens from file on startup
+// Load tokens from environment variables or file (TransferOrderPOS pattern)
 function loadTokens() {
     try {
+        // First try to load from environment variables (for Railway/containers)
+        if (process.env.ZOHO_ACCESS_TOKEN && process.env.ZOHO_REFRESH_TOKEN) {
+            accessToken = process.env.ZOHO_ACCESS_TOKEN;
+            refreshToken = process.env.ZOHO_REFRESH_TOKEN;
+            // Load expiry time if available, otherwise set to 1 hour from now
+            tokenExpiresAt = process.env.ZOHO_TOKEN_EXPIRES_AT 
+                ? parseInt(process.env.ZOHO_TOKEN_EXPIRES_AT) 
+                : Date.now() + (3600 * 1000);
+            console.log('📦 Loaded tokens from environment variables (Railway mode)');
+            if (tokenExpiresAt) {
+                const expiresIn = Math.max(0, Math.floor((tokenExpiresAt - Date.now()) / 1000));
+                console.log(`Token expires in ${expiresIn} seconds`);
+            }
+            return;
+        }
+        
+        // Fallback: try to load from file
         if (fs.existsSync(tokenFile)) {
             const fileContent = fs.readFileSync(tokenFile, 'utf8').trim();
             if (fileContent) {
                 const tokens = JSON.parse(fileContent);
+                
+                // Validate that all required tokens exist
                 if (tokens.accessToken && tokens.refreshToken) {
                     accessToken = tokens.accessToken;
                     refreshToken = tokens.refreshToken;
@@ -33,9 +52,15 @@ function loadTokens() {
                         const expiresIn = Math.max(0, Math.floor((tokenExpiresAt - Date.now()) / 1000));
                         console.log(`Token expires in ${expiresIn} seconds`);
                     }
+                    return;
+                } else {
+                    console.log('⚠️ Incomplete tokens found in file, clearing corrupted data');
+                    clearTokens();
                 }
             }
         }
+        
+        console.log('ℹ️  No saved tokens found - authentication required');
     } catch (error) {
         console.error('Error loading tokens:', error);
     }
