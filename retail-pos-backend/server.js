@@ -509,7 +509,23 @@ app.get('/api/items', async (req, res) => {
         res.json({ items });
     } catch (error) {
         console.error('[API ERROR] Failed to fetch items:', error.response?.data || error);
-        res.status(500).json({ error: 'Failed to fetch items' });
+        
+        // Detailed error response for debugging
+        const errorDetails = {
+            error: 'Failed to fetch items',
+            details: {
+                message: error.message,
+                status: error.response?.status,
+                statusText: error.response?.statusText,
+                data: error.response?.data,
+                url: `${ZOHO_BOOKS_API_URL}/items`,
+                organizationId: process.env.ZOHO_ORGANIZATION_ID,
+                hasToken: !!accessToken,
+                tokenExpiresIn: tokenExpiresAt ? Math.max(0, Math.floor((tokenExpiresAt - Date.now()) / 1000)) : null
+            }
+        };
+        
+        res.status(500).json(errorDetails);
     }
 });
 
@@ -531,7 +547,23 @@ app.get('/api/customers', async (req, res) => {
         res.json({ customers: response.data.contacts });
     } catch (error) {
         console.error('Error fetching customers:', error.response?.data || error);
-        res.status(500).json({ error: 'Failed to fetch customers' });
+        
+        // Detailed error response for debugging
+        const errorDetails = {
+            error: 'Failed to fetch customers',
+            details: {
+                message: error.message,
+                status: error.response?.status,
+                statusText: error.response?.statusText,
+                data: error.response?.data,
+                url: `${ZOHO_BOOKS_API_URL}/contacts`,
+                organizationId: process.env.ZOHO_ORGANIZATION_ID,
+                hasToken: !!accessToken,
+                tokenExpiresIn: tokenExpiresAt ? Math.max(0, Math.floor((tokenExpiresAt - Date.now()) / 1000)) : null
+            }
+        };
+        
+        res.status(500).json(errorDetails);
     }
 });
 
