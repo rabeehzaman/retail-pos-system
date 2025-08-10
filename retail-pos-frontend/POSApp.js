@@ -1,5 +1,5 @@
 // Enhanced Retail POS with Zoho Books Integration & shadcn/ui Components
-const { useState, useEffect, useMemo } = React;
+// Note: React hooks are already extracted in components.js
 
 const TAX_RATE = 0.15; // 15% VAT for KSA
 const CURRENCY = "SAR";
@@ -887,14 +887,14 @@ function POSApp() {
           open: showCustomerPopup,
           onOpenChange: setShowCustomerPopup
         },
-          React.createElement(DialogHeader, null,
-            React.createElement(DialogTitle, null, "Select Customer"),
-            React.createElement(DialogDescription, null, 
-              "Please select a customer to create the invoice:"
-            )
-          ),
-          React.createElement(DialogContent, { className: "max-h-64 overflow-y-auto" },
-            React.createElement('div', { className: "space-y-2" },
+          React.createElement(DialogContent, { className: "max-w-md" },
+            React.createElement(DialogHeader, null,
+              React.createElement(DialogTitle, null, "Select Customer"),
+              React.createElement(DialogDescription, null, 
+                "Please select a customer to create the invoice:"
+              )
+            ),
+            React.createElement('div', { className: "max-h-64 overflow-y-auto space-y-2 my-4" },
               customers.map(customer =>
                 React.createElement(Card, {
                   key: customer.contact_id,
@@ -913,24 +913,23 @@ function POSApp() {
                   )
                 )
               )
+            ),
+            React.createElement(DialogFooter, null,
+              React.createElement(Button, {
+                onClick: () => setShowCustomerPopup(false),
+                variant: "outline"
+              }, "Cancel"),
+              React.createElement(Button, {
+                onClick: () => {
+                  setSelectedCustomer(null);
+                  setShowCustomerPopup(false);
+                  handleCharge('cash'); // Continue with walk-in customer
+                },
+                className: "emerald-btn"
+              }, "Walk-in Customer")
             )
-          ),
-          React.createElement(DialogFooter, null,
-            React.createElement(Button, {
-              onClick: () => setShowCustomerPopup(false),
-              variant: "outline"
-            }, "Cancel"),
-            React.createElement(Button, {
-              onClick: () => {
-                setSelectedCustomer(null);
-                setShowCustomerPopup(false);
-                handleCharge('cash'); // Continue with walk-in customer
-              },
-              className: "emerald-btn"
-            }, "Walk-in Customer")
           )
         )
       )
-    )
   );
 }

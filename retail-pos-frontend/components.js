@@ -150,7 +150,7 @@ function Badge({ className, variant = "default", ...props }) {
       className
     ),
     ...props
-  });
+  }, props.children);
 }
 
 // Separator Component
@@ -310,9 +310,8 @@ window.CardDescription = CardDescription;
 window.CardFooter = CardFooter;
 window.Input = Input;
 window.Select = Select;
-window.SelectItem = SelectItem;
+window.SelectItem = SelectOption;
 window.Dialog = Dialog;
-window.DialogTrigger = DialogTrigger;
 window.DialogContent = DialogContent;
 window.DialogHeader = DialogHeader;
 window.DialogTitle = DialogTitle;
