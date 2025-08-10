@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>TMR POS - Zoho Books Integration</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="theme.css">
     <script>
         tailwind.config = {
             darkMode: 'class',
@@ -56,8 +57,11 @@
     <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
     
+    <!-- Load shadcn components -->
+    <script src="components.js"></script>
+    
     <!-- Load the POS App with tax toggle functionality -->
-    <script src="POSApp.js?v=4"></script>
+    <script src="POSApp.js?v=5"></script>
     <script>
         const root = ReactDOM.createRoot(document.getElementById('root'));
         root.render(React.createElement(POSApp));

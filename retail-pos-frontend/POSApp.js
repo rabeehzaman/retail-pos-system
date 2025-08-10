@@ -1,4 +1,4 @@
-// Retail POS with Zoho Books Integration
+// Enhanced Retail POS with Zoho Books Integration & shadcn/ui Components
 const { useState, useEffect, useMemo } = React;
 
 const TAX_RATE = 0.15; // 15% VAT for KSA
@@ -478,43 +478,44 @@ function POSApp() {
           // Search (desktop)
           React.createElement('div', { className: "hidden md:flex items-center gap-2 w-[420px]" },
             React.createElement('div', { className: "relative flex-1" },
-              React.createElement('input', {
+              React.createElement(Input, {
                 value: search,
                 onChange: (e) => setSearch(e.target.value),
                 placeholder: "Search items…",
-                className: "w-full pl-9 pr-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 outline-none focus:ring-2 ring-emerald-500"
+                className: "w-full"
               })
             )
           ),
           
-          // Actions
+          // Actions  
           React.createElement('div', { className: "flex items-center gap-2" },
             !authStatus.authenticated ? 
-              React.createElement('button', {
+              React.createElement(Button, {
                 onClick: login,
                 disabled: loading,
-                className: "px-4 py-2 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700 font-medium shadow-sm transition-all"
+                className: "emerald-btn"
               }, 'Connect to Zoho')
             : React.createElement(React.Fragment, null,
-              React.createElement('button', {
+              React.createElement(Button, {
                 onClick: fetchData,
                 disabled: loading,
-                className: "px-3 py-2 rounded-xl bg-blue-500 text-white hover:bg-blue-600 transition-all shadow-sm font-medium",
+                variant: "secondary",
                 title: "Sync data"
-              }, loading ? '⟳ Syncing...' : '🔄 Sync'),
-              React.createElement('button', {
+              }, loading ? React.createElement(LoadingSpinner, { className: "mr-2" }) : '🔄', ' Sync'),
+              React.createElement(Button, {
                 onClick: logout,
-                className: "px-3 py-2 rounded-xl bg-red-500 text-white hover:bg-red-600 transition-all shadow-sm font-medium",
+                variant: "destructive",
                 title: "Logout"
               }, '✕ Logout')
             ),
-            React.createElement('button', {
+            React.createElement(Button, {
               onClick: () => setDark(d => !d),
-              className: "p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-all"
+              variant: "ghost",
+              size: "icon"
             }, dark ? '☀️' : '🌙'),
-            React.createElement('button', {
+            React.createElement(Button, {
               onClick: newSale,
-              className: "hidden md:inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700 font-medium shadow-sm transition-all"
+              className: "hidden md:inline-flex emerald-btn"
             }, '🔄 New Sale')
           )
         )
@@ -533,29 +534,20 @@ function POSApp() {
             React.createElement('h2', { className: "font-semibold text-lg" }, 'TMR POS')
           ),
           React.createElement('nav', { className: "p-4 space-y-2" },
-            React.createElement('button', {
+            React.createElement(Button, {
               onClick: () => { setCurrentPage('pos'); setSidebarOpen(false); },
-              className: `w-full text-left p-3 rounded-lg transition-all ${
-                currentPage === 'pos' 
-                  ? 'bg-emerald-100 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400'
-                  : 'hover:bg-slate-100 dark:hover:bg-slate-800'
-              }`
+              variant: currentPage === 'pos' ? 'default' : 'ghost',
+              className: 'w-full justify-start'
             }, '🛒 Point of Sale'),
-            React.createElement('button', {
+            React.createElement(Button, {
               onClick: () => { setCurrentPage('settings'); setSidebarOpen(false); },
-              className: `w-full text-left p-3 rounded-lg transition-all ${
-                currentPage === 'settings' 
-                  ? 'bg-emerald-100 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400'
-                  : 'hover:bg-slate-100 dark:hover:bg-slate-800'
-              }`
+              variant: currentPage === 'settings' ? 'default' : 'ghost',
+              className: 'w-full justify-start'
             }, '⚙️ Settings'),
-            React.createElement('button', {
+            React.createElement(Button, {
               onClick: () => { setCurrentPage('reports'); setSidebarOpen(false); },
-              className: `w-full text-left p-3 rounded-lg transition-all ${
-                currentPage === 'reports' 
-                  ? 'bg-emerald-100 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400'
-                  : 'hover:bg-slate-100 dark:hover:bg-slate-800'
-              }`
+              variant: currentPage === 'reports' ? 'default' : 'ghost',
+              className: 'w-full justify-start'
             }, '📊 Reports')
           )
         )
@@ -572,29 +564,27 @@ function POSApp() {
             React.createElement('div', { className: "flex justify-between items-center gap-2" },
               React.createElement('div', { className: "flex gap-2 overflow-x-auto pb-1 scrollbar-none flex-1" },
                 categories.map(cat =>
-                  React.createElement('button', {
+                  React.createElement(Button, {
                     key: cat,
                     onClick: () => setCategory(cat),
-                    className: `px-3 py-1.5 rounded-lg whitespace-nowrap transition-all ${
-                      category === cat
-                        ? "bg-emerald-600 text-white"
-                        : "bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700"
-                    }`
+                    variant: category === cat ? "default" : "outline",
+                    size: "sm",
+                    className: "whitespace-nowrap"
                   }, cat)
                 )
               ),
-              React.createElement('div', { className: "flex border rounded-lg bg-slate-100 dark:bg-slate-800" },
-                React.createElement('button', {
+              React.createElement('div', { className: "flex border rounded-lg bg-muted p-1" },
+                React.createElement(Button, {
                   onClick: () => setViewMode("grid"),
-                  className: `p-2 rounded-lg transition-all ${
-                    viewMode === "grid" ? "bg-white dark:bg-slate-700 shadow-sm" : ""
-                  }`
+                  variant: viewMode === "grid" ? "default" : "ghost",
+                  size: "icon",
+                  className: "h-8 w-8"
                 }, '⊞'),
-                React.createElement('button', {
+                React.createElement(Button, {
                   onClick: () => setViewMode("list"),
-                  className: `p-2 rounded-lg transition-all ${
-                    viewMode === "list" ? "bg-white dark:bg-slate-700 shadow-sm" : ""
-                  }`
+                  variant: viewMode === "list" ? "default" : "ghost",
+                  size: "icon", 
+                  className: "h-8 w-8"
                 }, '☰')
               )
             )
@@ -603,11 +593,11 @@ function POSApp() {
           // Mobile Search
           React.createElement('div', { className: "md:hidden p-3 border-b border-slate-200 dark:border-slate-800 flex-shrink-0" },
             React.createElement('div', { className: "relative" },
-              React.createElement('input', {
+              React.createElement(Input, {
                 value: search,
                 onChange: (e) => setSearch(e.target.value),
                 placeholder: "Search items…",
-                className: "w-full pl-9 pr-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 outline-none"
+                className: "w-full"
               })
             )
           ),
@@ -632,45 +622,58 @@ function POSApp() {
                   : "space-y-2"
               },
               filteredItems.map(item =>
-                React.createElement('button', {
+                React.createElement(Card, {
                   key: item.id,
-                  onClick: () => addToCart(item),
-                  className: viewMode === "grid"
-                    ? "flex flex-col items-center p-4 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-emerald-500 transition-all"
-                    : "flex items-center justify-between w-full p-3 rounded-lg bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800"
+                  className: "cursor-pointer hover:shadow-md transition-all duration-200 border-border hover:border-primary/50 " + 
+                    (viewMode === "grid" 
+                      ? "flex flex-col items-center p-4" 
+                      : "flex-row p-3"),
+                  onClick: () => addToCart(item)
                 },
-                  viewMode === "grid" ?
-                    React.createElement(React.Fragment, null,
-                      React.createElement('div', { className: "text-2xl mb-2" }, '📦'),
-                      React.createElement('div', { className: "text-sm font-medium text-center" }, item.name),
-                      item.sku && React.createElement('div', { className: "text-xs text-slate-500 mt-1" }, item.sku),
-                      React.createElement('div', { className: "text-lg font-bold mt-2" }, 
-                        `${formatCurrency(taxMode === "inclusive" ? item.price * (1 + TAX_RATE) : item.price)} / ${item.defaultUnit || 'PCS'}`
+                  viewMode === "grid" ? 
+                    React.createElement(CardContent, { className: "flex flex-col items-center text-center p-4" },
+                      React.createElement('div', { className: "text-3xl mb-3 opacity-80" }, '📦'),
+                      React.createElement(CardTitle, { className: "text-sm mb-2" }, item.name),
+                      item.sku && React.createElement(CardDescription, { className: "text-xs mb-2" }, item.sku),
+                      React.createElement('div', { className: "text-lg font-bold text-primary mb-1" }, 
+                        formatCurrency(taxMode === "inclusive" ? item.price * (1 + TAX_RATE) : item.price)
                       ),
-                      item.hasConversion && React.createElement('div', { className: "text-xs text-slate-500 mt-1" }, 
-                        `CTN: ${formatCurrency(item.cartonPrice)}`
+                      React.createElement('div', { className: "text-xs text-muted-foreground mb-2" }, 
+                        `per ${item.defaultUnit || 'PCS'}`
+                      ),
+                      item.hasConversion && React.createElement('div', { className: "text-xs text-muted-foreground" }, 
+                        `Carton: ${formatCurrency(item.cartonPrice)}`
                       ),
                       item.stock_on_hand !== undefined && 
-                        React.createElement('div', { className: "text-xs text-slate-500 mt-1" }, `Stock: ${item.stock_on_hand}`)
+                        React.createElement(Badge, { variant: "secondary", className: "mt-2 text-xs" }, 
+                          `Stock: ${item.stock_on_hand}`
+                        )
                     )
-                  : React.createElement(React.Fragment, null,
+                  : React.createElement(CardContent, { className: "flex items-center justify-between p-3" },
                       React.createElement('div', { className: "flex items-center gap-3" },
-                        React.createElement('span', { className: "text-xl" }, '📦'),
+                        React.createElement('span', { className: "text-xl opacity-80" }, '📦'),
                         React.createElement('div', { className: "text-left" },
-                          React.createElement('div', { className: "font-medium" }, item.name),
-                          item.sku && React.createElement('div', { className: "text-xs text-slate-500" }, item.sku)
+                          React.createElement(CardTitle, { className: "text-sm" }, item.name),
+                          item.sku && React.createElement(CardDescription, { className: "text-xs" }, item.sku)
                         )
                       ),
                       React.createElement('div', { className: "flex items-center gap-4" },
                         item.stock_on_hand !== undefined && 
-                          React.createElement('span', { className: "text-sm text-slate-500" }, `Stock: ${item.stock_on_hand}`),
-                        React.createElement('span', { className: "font-bold" }, 
-                          `${formatCurrency(taxMode === "inclusive" ? item.price * (1 + TAX_RATE) : item.price)} / ${item.defaultUnit || 'PCS'}`
+                          React.createElement(Badge, { variant: "outline", className: "text-xs" }, 
+                            `${item.stock_on_hand} in stock`
+                          ),
+                        React.createElement('div', { className: "text-right" },
+                          React.createElement('div', { className: "font-bold text-primary" }, 
+                            formatCurrency(taxMode === "inclusive" ? item.price * (1 + TAX_RATE) : item.price)
+                          ),
+                          React.createElement('div', { className: "text-xs text-muted-foreground" }, 
+                            `per ${item.defaultUnit || 'PCS'}`
+                          ),
+                          item.hasConversion && React.createElement('div', { className: "text-xs text-muted-foreground" }, 
+                            `(Carton: ${formatCurrency(item.cartonPrice)})`
+                          )
                         ),
-                        item.hasConversion && React.createElement('span', { className: "text-xs text-slate-500" }, 
-                          `(CTN: ${formatCurrency(item.cartonPrice)})`
-                        ),
-                        React.createElement('span', { className: "text-emerald-600" }, '+')
+                        React.createElement('div', { className: "text-lg text-emerald-600 font-bold" }, '+')
                       )
                     )
                 )
@@ -687,17 +690,16 @@ function POSApp() {
         },
           // Customer Selection
           customers.length > 0 && React.createElement('div', { className: "p-3 border-b border-slate-200 dark:border-slate-800 flex-shrink-0" },
-            React.createElement('select', {
+            React.createElement(Select, {
               value: selectedCustomer?.contact_id || "",
-              onChange: (e) => {
-                const customer = customers.find(c => c.contact_id === e.target.value);
+              onValueChange: (value) => {
+                const customer = customers.find(c => c.contact_id === value);
                 setSelectedCustomer(customer || null);
-              },
-              className: "w-full px-3 py-2 rounded-lg bg-slate-100 dark:bg-slate-800"
+              }
             },
-              React.createElement('option', { value: "" }, "Select Customer (Optional)"),
+              React.createElement(SelectOption, { value: "" }, "Select Customer (Optional)"),
               customers.map(customer =>
-                React.createElement('option', { 
+                React.createElement(SelectOption, { 
                   key: customer.contact_id, 
                   value: customer.contact_id 
                 }, customer.contact_name)
@@ -725,46 +727,51 @@ function POSApp() {
                     React.createElement('div', { className: "flex-1" },
                       React.createElement('div', { className: "font-medium" }, line.name),
                       React.createElement('div', { className: "flex items-center gap-2 mt-1" },
-                        React.createElement('input', {
+                        React.createElement(Input, {
                           type: 'number',
                           step: '0.01',
                           value: line.price,
                           onChange: (e) => updatePrice(line.id, e.target.value),
-                          className: "w-20 px-2 py-1 text-xs bg-slate-100 dark:bg-slate-700 rounded border-0 outline-none"
+                          className: "w-20 h-7 text-xs"
                         }),
-                        React.createElement('span', { className: "text-xs text-slate-500" }, '/ '),
-                        React.createElement('select', {
+                        React.createElement('span', { className: "text-xs text-muted-foreground" }, '/'),
+                        React.createElement(Select, {
                           value: line.unit || 'PCS',
-                          onChange: (e) => updateUnit(line.id, e.target.value),
-                          className: "px-2 py-1 text-xs bg-slate-100 dark:bg-slate-700 rounded border-0 outline-none"
+                          onValueChange: (value) => updateUnit(line.id, value)
                         },
-                          React.createElement('option', { value: 'PCS' }, 'PCS'),
-                          React.createElement('option', { value: 'CTN' }, 'CTN'),
-                          React.createElement('option', { value: 'KG' }, 'KG'),
-                          React.createElement('option', { value: 'L' }, 'L')
+                          React.createElement(SelectOption, { value: 'PCS' }, 'PCS'),
+                          React.createElement(SelectOption, { value: 'CTN' }, 'CTN'),
+                          React.createElement(SelectOption, { value: 'KG' }, 'KG'),
+                          React.createElement(SelectOption, { value: 'L' }, 'L')
                         ),
-                        React.createElement('span', { className: "text-xs text-slate-500" }, `× ${line.qty}`)
+                        React.createElement('span', { className: "text-xs text-muted-foreground" }, `× ${line.qty}`)
                       ),
                       line.storedUnit && line.storedUnit !== line.unit && 
                         React.createElement('div', { className: "text-xs text-slate-400" }, 
                           `(Zoho unit: ${line.storedUnit})`
                         )
                     ),
-                    React.createElement('button', {
+                    React.createElement(Button, {
                       onClick: () => removeLine(line.id),
-                      className: "p-1 hover:bg-red-50 dark:hover:bg-red-900/20 rounded text-red-500"
+                      variant: "ghost",
+                      size: "icon",
+                      className: "h-7 w-7 text-destructive hover:text-destructive hover:bg-destructive/10"
                     }, '🗑')
                   ),
                   React.createElement('div', { className: "flex items-center justify-between" },
-                    React.createElement('div', { className: "flex items-center gap-2" },
-                      React.createElement('button', {
+                    React.createElement('div', { className: "flex items-center gap-1" },
+                      React.createElement(Button, {
                         onClick: () => dec(line.id),
-                        className: "p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800"
+                        variant: "ghost",
+                        size: "icon",
+                        className: "h-7 w-7"
                       }, '−'),
-                      React.createElement('span', { className: "w-8 text-center" }, line.qty),
-                      React.createElement('button', {
+                      React.createElement('span', { className: "w-8 text-center font-medium" }, line.qty),
+                      React.createElement(Button, {
                         onClick: () => inc(line.id),
-                        className: "p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800"
+                        variant: "ghost", 
+                        size: "icon",
+                        className: "h-7 w-7"
                       }, '+')
                     ),
                     React.createElement('div', { className: "font-bold" }, formatCurrency(line.price * line.qty))
@@ -773,24 +780,29 @@ function POSApp() {
               ),
               
               // Tax Mode Toggle
-              cart.length > 0 && React.createElement('div', { className: "border-t border-slate-200 dark:border-slate-800 p-3 mt-4" },
+              cart.length > 0 && React.createElement('div', { className: "border-t border-border p-3 mt-4" },
                 React.createElement('div', { className: "flex items-center justify-between mb-3" },
                   React.createElement('span', { className: "text-sm font-medium" }, "Tax Mode:"),
-                  React.createElement('div', { className: "flex bg-slate-100 dark:bg-slate-800 rounded-lg p-1" },
-                    React.createElement('button', {
+                  React.createElement('div', { className: "flex bg-muted rounded-lg p-1" },
+                    React.createElement(Button, {
                       onClick: () => setTaxMode("exclusive"),
-                      className: `px-3 py-1 text-xs rounded-md transition-all ${taxMode === "exclusive" ? "bg-white dark:bg-slate-700 shadow-sm" : "hover:bg-slate-200 dark:hover:bg-slate-700"}`
+                      variant: taxMode === "exclusive" ? "default" : "ghost",
+                      size: "sm",
+                      className: "text-xs"
                     }, "Tax Exclusive"),
-                    React.createElement('button', {
+                    React.createElement(Button, {
                       onClick: () => setTaxMode("inclusive"),
-                      className: `px-3 py-1 text-xs rounded-md transition-all ${taxMode === "inclusive" ? "bg-white dark:bg-slate-700 shadow-sm" : "hover:bg-slate-200 dark:hover:bg-slate-700"}`
+                      variant: taxMode === "inclusive" ? "default" : "ghost",
+                      size: "sm",
+                      className: "text-xs"
                     }, "Tax Inclusive")
                   )
                 )
               ),
               
               // Totals section moved here - right after cart items
-              cart.length > 0 && React.createElement('div', { className: "bg-slate-50 dark:bg-slate-800 rounded-lg p-3 mt-4 space-y-2" },
+              cart.length > 0 && React.createElement(Card, { className: "mt-4" },
+                React.createElement(CardContent, { className: "p-3 space-y-2" },
                 React.createElement('div', { className: "flex justify-between text-sm" },
                   React.createElement('span', null, `Subtotal (${subtotalQty} items)`),
                   React.createElement('span', null, formatCurrency(subtotal))
@@ -799,32 +811,42 @@ function POSApp() {
                   React.createElement('span', null, `VAT (15%) ${taxMode === "inclusive" ? "(included)" : ""}`),
                   React.createElement('span', null, formatCurrency(tax))
                 ),
-                React.createElement('div', { className: "flex justify-between text-lg font-bold border-t border-slate-200 dark:border-slate-600 pt-2" },
-                  React.createElement('span', null, "Total"),
-                  React.createElement('span', null, formatCurrency(total))
+                  React.createElement('div', { className: "flex justify-between text-lg font-bold border-t border-border pt-2" },
+                    React.createElement('span', null, "Total"),
+                    React.createElement('span', null, formatCurrency(total))
+                  )
                 )
               )
             )
           ),
           
           // Create Invoice Button and Last Invoice
-          cart.length > 0 && React.createElement('div', { className: "border-t border-slate-200 dark:border-slate-800 p-3 flex-shrink-0" },
+          cart.length > 0 && React.createElement('div', { className: "border-t border-border p-3 flex-shrink-0" },
             // Create Invoice Button
-            React.createElement('button', {
+            React.createElement(Button, {
               onClick: () => handleCharge('cash'),
               disabled: loading || !authStatus.authenticated,
-              className: "w-full py-3 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium"
-            }, "Create Invoice"),
+              className: "w-full h-12 emerald-btn"
+            }, loading ? React.createElement(LoadingSpinner, { className: "mr-2" }) : null, "Create Invoice"),
             
             // Last Invoice
-            lastInvoice && React.createElement('div', { 
-              className: "mt-3 p-2 bg-green-50 dark:bg-green-900/20 rounded-lg text-sm" 
+            lastInvoice && React.createElement(Card, { 
+              className: "mt-3 border-green-200 bg-green-50 dark:bg-green-900/20" 
             },
-              React.createElement('div', { className: "text-green-700 dark:text-green-400 font-medium" },
-                `Invoice #${lastInvoice.invoice_number}`
-              ),
-              React.createElement('div', { className: "text-green-600 dark:text-green-500" },
-                `Total: ${formatCurrency(lastInvoice.total)}`
+              React.createElement(CardContent, { className: "p-3" },
+                React.createElement('div', { className: "flex items-center justify-between" },
+                  React.createElement('div', null,
+                    React.createElement('div', { className: "text-green-700 dark:text-green-400 font-medium text-sm" },
+                      `Invoice #${lastInvoice.invoice_number}`
+                    ),
+                    React.createElement('div', { className: "text-green-600 dark:text-green-500 text-xs" },
+                      `Total: ${formatCurrency(lastInvoice.total)}`
+                    )
+                  ),
+                  React.createElement(Badge, { variant: "secondary", className: "bg-green-100 text-green-700" },
+                    '✓ Created'
+                  )
+                )
               )
             )
           )
@@ -832,109 +854,80 @@ function POSApp() {
       ),
       
         // Mobile Tab Bar
-        React.createElement('div', { className: "md:hidden border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900" },
-        React.createElement('div', { className: "flex" },
-          React.createElement('button', {
-            onClick: () => setActiveTab("products"),
-            className: `flex-1 py-3 flex flex-col items-center gap-1 ${
-              activeTab === "products" ? "text-emerald-600" : "text-slate-500"
-            }`
-          },
-            React.createElement('span', null, '📦'),
-            React.createElement('span', { className: "text-xs" }, "Products")
-          ),
-          React.createElement('button', {
-            onClick: () => setActiveTab("cart"),
-            className: `flex-1 py-3 flex flex-col items-center gap-1 relative ${
-              activeTab === "cart" ? "text-emerald-600" : "text-slate-500"
-            }`
-          },
-            React.createElement('span', null, '🛒'),
-            React.createElement('span', { className: "text-xs" }, "Cart"),
-            subtotalQty > 0 && React.createElement('span', { 
-              className: "absolute top-2 right-[calc(50%-20px)] bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center" 
-            }, subtotalQty)
-          )
-        ),
-        
-        // Mobile Tab Bar
-        React.createElement('div', { className: "md:hidden border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900" },
+        React.createElement('div', { className: "md:hidden border-t border-border bg-card" },
           React.createElement('div', { className: "flex" },
-            React.createElement('button', {
+            React.createElement(Button, {
               onClick: () => setActiveTab("products"),
-              className: `flex-1 py-3 flex flex-col items-center gap-1 ${
-                activeTab === "products" ? "text-emerald-600" : "text-slate-500"
+              variant: "ghost",
+              className: `flex-1 h-16 flex-col gap-1 rounded-none ${
+                activeTab === "products" ? "text-primary bg-accent" : "text-muted-foreground"
               }`
             },
               React.createElement('span', null, '📦'),
               React.createElement('span', { className: "text-xs" }, "Products")
             ),
-            React.createElement('button', {
+            React.createElement(Button, {
               onClick: () => setActiveTab("cart"),
-              className: `flex-1 py-3 flex flex-col items-center gap-1 relative ${
-                activeTab === "cart" ? "text-emerald-600" : "text-slate-500"
+              variant: "ghost",
+              className: `flex-1 h-16 flex-col gap-1 rounded-none relative ${
+                activeTab === "cart" ? "text-primary bg-accent" : "text-muted-foreground"
               }`
             },
               React.createElement('span', null, '🛒'),
               React.createElement('span', { className: "text-xs" }, "Cart"),
-              subtotalQty > 0 && React.createElement('span', { 
-                className: "absolute top-2 right-[calc(50%-20px)] bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center" 
+              subtotalQty > 0 && React.createElement(Badge, { 
+                className: "absolute top-2 right-[calc(50%-12px)] h-5 w-5 p-0 text-xs bg-destructive text-destructive-foreground" 
               }, subtotalQty)
             )
           )
         ),
 
-        // Customer Selection Popup
-        showCustomerPopup && React.createElement('div', {
-          className: "fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50",
-          onClick: () => setShowCustomerPopup(false)
+        // Customer Selection Dialog
+        React.createElement(Dialog, {
+          open: showCustomerPopup,
+          onOpenChange: setShowCustomerPopup
         },
-          React.createElement('div', {
-            className: "bg-white dark:bg-slate-900 rounded-lg p-6 max-w-md w-full mx-4 max-h-96",
-            onClick: (e) => e.stopPropagation()
-          },
-            React.createElement('h2', { 
-              className: "text-lg font-semibold mb-4" 
-            }, "Select Customer"),
-            React.createElement('p', { 
-              className: "text-sm text-slate-600 dark:text-slate-400 mb-4" 
-            }, "Please select a customer to create the invoice:"),
-            React.createElement('div', { 
-              className: "max-h-64 overflow-y-auto mb-4" 
-            },
-              React.createElement('div', { className: "space-y-2" },
-                customers.map(customer =>
-                  React.createElement('button', {
-                    key: customer.contact_id,
-                    onClick: () => {
-                      setSelectedCustomer(customer);
-                      setShowCustomerPopup(false);
-                      handleCharge('cash'); // Continue with invoice creation
-                    },
-                    className: "w-full text-left p-3 rounded-lg bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 transition-all"
-                  },
-                    React.createElement('div', { className: "font-medium" }, customer.contact_name),
-                    customer.company_name && React.createElement('div', { 
-                      className: "text-sm text-slate-500" 
+          React.createElement(DialogHeader, null,
+            React.createElement(DialogTitle, null, "Select Customer"),
+            React.createElement(DialogDescription, null, 
+              "Please select a customer to create the invoice:"
+            )
+          ),
+          React.createElement(DialogContent, { className: "max-h-64 overflow-y-auto" },
+            React.createElement('div', { className: "space-y-2" },
+              customers.map(customer =>
+                React.createElement(Card, {
+                  key: customer.contact_id,
+                  className: "cursor-pointer hover:shadow-sm transition-all",
+                  onClick: () => {
+                    setSelectedCustomer(customer);
+                    setShowCustomerPopup(false);
+                    handleCharge('cash'); // Continue with invoice creation
+                  }
+                },
+                  React.createElement(CardContent, { className: "p-3" },
+                    React.createElement(CardTitle, { className: "text-sm" }, customer.contact_name),
+                    customer.company_name && React.createElement(CardDescription, { 
+                      className: "text-xs" 
                     }, customer.company_name)
                   )
                 )
               )
-            ),
-            React.createElement('div', { className: "flex gap-2" },
-              React.createElement('button', {
-                onClick: () => setShowCustomerPopup(false),
-                className: "flex-1 px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-800 transition-all"
-              }, "Cancel"),
-              React.createElement('button', {
-                onClick: () => {
-                  setSelectedCustomer(null);
-                  setShowCustomerPopup(false);
-                  handleCharge('cash'); // Continue with walk-in customer
-                },
-                className: "flex-1 px-4 py-2 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 transition-all"
-              }, "Walk-in Customer")
             )
+          ),
+          React.createElement(DialogFooter, null,
+            React.createElement(Button, {
+              onClick: () => setShowCustomerPopup(false),
+              variant: "outline"
+            }, "Cancel"),
+            React.createElement(Button, {
+              onClick: () => {
+                setSelectedCustomer(null);
+                setShowCustomerPopup(false);
+                handleCharge('cash'); // Continue with walk-in customer
+              },
+              className: "emerald-btn"
+            }, "Walk-in Customer")
           )
         )
       )
