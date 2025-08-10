@@ -3,7 +3,7 @@ const { useState, useEffect, useMemo } = React;
 
 const TAX_RATE = 0.15; // 15% VAT for KSA
 const CURRENCY = "SAR";
-const BACKEND_URL = "http://localhost:3001";
+const BACKEND_URL = "https://retail-pos-backend-production.up.railway.app";
 
 function formatCurrency(n) {
   return new Intl.NumberFormat("en-SA", { style: "currency", currency: CURRENCY }).format(n);

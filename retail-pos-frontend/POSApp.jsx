@@ -8,7 +8,7 @@ import { Menu, Search, ShoppingCart, Plus, Minus, Trash2, Sun, Moon, CreditCard,
 
 const TAX_RATE = 0.15; // 15% VAT for KSA
 const CURRENCY = "SAR";
-const BACKEND_URL = "http://localhost:3001"; // Backend server URL
+const BACKEND_URL = "https://retail-pos-backend-production.up.railway.app"; // Railway backend URL
 
 function formatCurrency(n) {
   return new Intl.NumberFormat("en-SA", { style: "currency", currency: CURRENCY }).format(n);

@@ -77,6 +77,31 @@ function clearTokens() {
 // Load tokens on startup
 loadTokens();
 
+// Startup token refresh function
+async function refreshTokensOnStartup() {
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    
+    if (!accessToken || !refreshToken) {
+        console.log('⏭️  Skipping startup token refresh - no tokens available');
+        return;
+    }
+    
+    try {
+        if (!tokenExpiresAt || Date.now() + (10 * 60 * 1000) >= tokenExpiresAt) {
+            console.log('🔄 Refreshing tokens on startup...');
+            await refreshAccessToken();
+        } else {
+            const expiresIn = Math.floor((tokenExpiresAt - Date.now()) / 1000);
+            console.log(`✅ Token still valid for ${expiresIn} seconds`);
+        }
+    } catch (error) {
+        console.error('⚠️  Startup token refresh failed:', error.message);
+    }
+}
+
+// Call startup token refresh
+refreshTokensOnStartup();
+
 // API URLs for Saudi Arabia
 const ZOHO_ACCOUNTS_URL = process.env.ZOHO_ACCOUNTS_URL || 'https://accounts.zoho.sa';
 const ZOHO_BOOKS_API_URL = process.env.ZOHO_BOOKS_API_URL || 'https://www.zohoapis.sa/books/v3';
