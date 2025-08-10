@@ -734,7 +734,7 @@ app.post('/api/invoices', async (req, res) => {
                 item_id: item.item_id,
                 quantity: item.quantity,
                 rate: item.rate,
-                tax_percentage: item.tax_percentage || 15,
+                tax_id: item.tax_id || "9465000000007061", // Default to Standard Rate 15% tax ID
                 is_taxable: true // Explicitly mark items as taxable
             };
             
@@ -755,7 +755,6 @@ app.post('/api/invoices', async (req, res) => {
         
         // Prepare invoice data for Zoho Books
         const invoiceData = {
-            customer_id: customer_id || undefined, // Walk-in customer if not specified
             date: new Date().toISOString().split('T')[0],
             type: 'invoice', // Specify this is a tax invoice
             is_inclusive_tax: req.body.is_inclusive_tax || false, // Support tax inclusive/exclusive
@@ -767,6 +766,11 @@ app.post('/api/invoices', async (req, res) => {
                 payment_gateways: []
             }
         };
+
+        // Only add customer_id if a customer is selected (omit for walk-in customers)
+        if (customer_id) {
+            invoiceData.customer_id = customer_id;
+        }
         
         console.log('\n[Invoice] Sending to Zoho Books:');
         console.log(JSON.stringify(invoiceData, null, 2));

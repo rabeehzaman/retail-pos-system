@@ -29,6 +29,7 @@ function POSApp() {
   const [cartScrollRef, setCartScrollRef] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState('pos');
+  const [showCustomerPopup, setShowCustomerPopup] = useState(false);
   
   // Debug helper - expose to window for console access
   React.useEffect(() => {
@@ -282,6 +283,7 @@ function POSApp() {
         unit: unit,
         storedUnit: item.storedUnit,  // Keep original unit for reference
         tax_percentage: item.tax_percentage || TAX_RATE * 100,
+        tax_id: item.tax_id || "9465000000007061", // Default to Standard Rate 15% tax ID
         qty: 1
       };
       
@@ -346,6 +348,12 @@ function POSApp() {
       return;
     }
 
+    // Check if customer is selected
+    if (!selectedCustomer && customers.length > 0) {
+      setShowCustomerPopup(true);
+      return;
+    }
+
     setLoading(true);
     setSyncStatus("Creating invoice...");
 
@@ -364,7 +372,7 @@ function POSApp() {
           item_id: item.id,
           quantity: item.qty,
           rate: item.originalPrice || item.price, // Use original price for backend
-          tax_percentage: item.tax_percentage
+          tax_id: item.tax_id || "9465000000007061" // Default to Standard Rate 15% tax ID
         };
         
         // Handle unit conversion for pieces
@@ -872,6 +880,60 @@ function POSApp() {
               subtotalQty > 0 && React.createElement('span', { 
                 className: "absolute top-2 right-[calc(50%-20px)] bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center" 
               }, subtotalQty)
+            )
+          )
+        ),
+
+        // Customer Selection Popup
+        showCustomerPopup && React.createElement('div', {
+          className: "fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50",
+          onClick: () => setShowCustomerPopup(false)
+        },
+          React.createElement('div', {
+            className: "bg-white dark:bg-slate-900 rounded-lg p-6 max-w-md w-full mx-4 max-h-96",
+            onClick: (e) => e.stopPropagation()
+          },
+            React.createElement('h2', { 
+              className: "text-lg font-semibold mb-4" 
+            }, "Select Customer"),
+            React.createElement('p', { 
+              className: "text-sm text-slate-600 dark:text-slate-400 mb-4" 
+            }, "Please select a customer to create the invoice:"),
+            React.createElement('div', { 
+              className: "max-h-64 overflow-y-auto mb-4" 
+            },
+              React.createElement('div', { className: "space-y-2" },
+                customers.map(customer =>
+                  React.createElement('button', {
+                    key: customer.contact_id,
+                    onClick: () => {
+                      setSelectedCustomer(customer);
+                      setShowCustomerPopup(false);
+                      handleCharge('cash'); // Continue with invoice creation
+                    },
+                    className: "w-full text-left p-3 rounded-lg bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 transition-all"
+                  },
+                    React.createElement('div', { className: "font-medium" }, customer.contact_name),
+                    customer.company_name && React.createElement('div', { 
+                      className: "text-sm text-slate-500" 
+                    }, customer.company_name)
+                  )
+                )
+              )
+            ),
+            React.createElement('div', { className: "flex gap-2" },
+              React.createElement('button', {
+                onClick: () => setShowCustomerPopup(false),
+                className: "flex-1 px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-800 transition-all"
+              }, "Cancel"),
+              React.createElement('button', {
+                onClick: () => {
+                  setSelectedCustomer(null);
+                  setShowCustomerPopup(false);
+                  handleCharge('cash'); // Continue with walk-in customer
+                },
+                className: "flex-1 px-4 py-2 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 transition-all"
+              }, "Walk-in Customer")
             )
           )
         )
