@@ -247,6 +247,32 @@ app.get('/auth/status', (req, res) => {
     });
 });
 
+// Display tokens for Railway environment variable setup
+app.get('/auth/tokens', (req, res) => {
+    if (!accessToken || !refreshToken) {
+        return res.json({ 
+            error: 'No tokens available. Please authenticate first.',
+            hasTokens: false
+        });
+    }
+    
+    res.json({
+        success: true,
+        instructions: 'Copy these values to Railway environment variables:',
+        environmentVariables: {
+            ZOHO_ACCESS_TOKEN: accessToken,
+            ZOHO_REFRESH_TOKEN: refreshToken,
+            ZOHO_TOKEN_EXPIRES_AT: tokenExpiresAt ? tokenExpiresAt.toString() : ''
+        },
+        railwayInstructions: [
+            '1. Go to Railway Dashboard → Your Project → retail-pos-backend → Variables',
+            '2. Add/Update the three environment variables above',
+            '3. Restart the service',
+            '4. Tokens will persist across service restarts'
+        ]
+    });
+});
+
 // OAuth login - redirect to Zoho
 app.get('/auth/login', (req, res) => {
     // Request both Zoho Books and Inventory scopes for full POS functionality
