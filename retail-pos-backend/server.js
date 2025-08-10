@@ -249,10 +249,15 @@ app.get('/auth/status', (req, res) => {
 
 // Display tokens for Railway environment variable setup
 app.get('/auth/tokens', (req, res) => {
-    if (!accessToken || !refreshToken) {
+    if (!accessToken) {
         return res.json({ 
-            error: 'No tokens available. Please authenticate first.',
-            hasTokens: false
+            error: 'No access token available. Please authenticate first.',
+            hasTokens: false,
+            debug: {
+                hasAccessToken: !!accessToken,
+                hasRefreshToken: !!refreshToken,
+                tokenExpiresAt: tokenExpiresAt
+            }
         });
     }
     
@@ -261,14 +266,21 @@ app.get('/auth/tokens', (req, res) => {
         instructions: 'Copy these values to Railway environment variables:',
         environmentVariables: {
             ZOHO_ACCESS_TOKEN: accessToken,
-            ZOHO_REFRESH_TOKEN: refreshToken,
+            ZOHO_REFRESH_TOKEN: refreshToken || '', // Allow empty refresh token
             ZOHO_TOKEN_EXPIRES_AT: tokenExpiresAt ? tokenExpiresAt.toString() : ''
+        },
+        debug: {
+            hasAccessToken: !!accessToken,
+            hasRefreshToken: !!refreshToken,
+            tokenExpiresAt: tokenExpiresAt,
+            expiresIn: tokenExpiresAt ? Math.max(0, Math.floor((tokenExpiresAt - Date.now()) / 1000)) : null
         },
         railwayInstructions: [
             '1. Go to Railway Dashboard → Your Project → retail-pos-backend → Variables',
-            '2. Add/Update the three environment variables above',
+            '2. Add/Update the environment variables above',
             '3. Restart the service',
-            '4. Tokens will persist across service restarts'
+            '4. Tokens will persist across service restarts',
+            '5. Note: Refresh token may be empty - will get one on next auth cycle'
         ]
     });
 });
