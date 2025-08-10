@@ -734,7 +734,8 @@ app.post('/api/invoices', async (req, res) => {
                 item_id: item.item_id,
                 quantity: item.quantity,
                 rate: item.rate,
-                tax_percentage: item.tax_percentage || 15
+                tax_percentage: item.tax_percentage || 15,
+                is_taxable: true // Explicitly mark items as taxable
             };
             
             // Add unit field if provided
@@ -756,6 +757,8 @@ app.post('/api/invoices', async (req, res) => {
         const invoiceData = {
             customer_id: customer_id || undefined, // Walk-in customer if not specified
             date: new Date().toISOString().split('T')[0],
+            type: 'invoice', // Specify this is a tax invoice
+            is_inclusive_tax: req.body.is_inclusive_tax || false, // Support tax inclusive/exclusive
             line_items: transformedLineItems,
             notes: notes || 'Sale from POS',
             terms: 'Payment on delivery',

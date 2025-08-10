@@ -21,6 +21,7 @@ export default function POSApp() {
   const [activeTab, setActiveTab] = useState("products");
   const [cart, setCart] = useState([]);
   const [viewMode, setViewMode] = useState("grid");
+  const [taxMode, setTaxMode] = useState("exclusive"); // "inclusive" or "exclusive"
   
   // Zoho integration states
   const [authStatus, setAuthStatus] = useState({ authenticated: false });
@@ -74,6 +75,18 @@ export default function POSApp() {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [showCustomerDropdown]);
+
+  // Update cart prices when tax mode changes
+  useEffect(() => {
+    setCart(prev => prev.map(item => {
+      const basePrice = item.originalPrice || item.price;
+      return {
+        ...item,
+        originalPrice: item.originalPrice || item.price, // Ensure originalPrice is set
+        price: taxMode === "inclusive" ? basePrice * (1 + TAX_RATE) : basePrice
+      };
+    }));
+  }, [taxMode]);
 
   // Check auth status
   async function checkAuthStatus() {
@@ -210,11 +223,30 @@ export default function POSApp() {
     );
   }, [search, category, items]);
 
-  // Cart calculations
+  // Cart calculations with tax mode support
   const subtotal = useMemo(() => cart.reduce((sum, line) => sum + line.price * line.qty, 0), [cart]);
   const subtotalQty = useMemo(() => cart.reduce((sum, line) => sum + line.qty, 0), [cart]);
-  const tax = useMemo(() => +(subtotal * TAX_RATE).toFixed(2), [subtotal]);
-  const total = useMemo(() => +(subtotal + tax).toFixed(2), [subtotal, tax]);
+  
+  // For tax inclusive mode, tax is already included in the subtotal
+  const tax = useMemo(() => {
+    if (taxMode === "inclusive") {
+      // Tax is already included in prices, calculate the tax portion
+      return +(subtotal - (subtotal / (1 + TAX_RATE))).toFixed(2);
+    } else {
+      // Tax exclusive - add tax on top
+      return +(subtotal * TAX_RATE).toFixed(2);
+    }
+  }, [subtotal, taxMode]);
+  
+  const total = useMemo(() => {
+    if (taxMode === "inclusive") {
+      // Total is same as subtotal (tax already included)
+      return +subtotal.toFixed(2);
+    } else {
+      // Add tax to subtotal
+      return +(subtotal + tax).toFixed(2);
+    }
+  }, [subtotal, tax, taxMode]);
 
   // Cart operations
   function addToCart(item) {
@@ -228,7 +260,8 @@ export default function POSApp() {
       return [...prev, { 
         id: item.id, 
         name: item.name, 
-        price: item.price,
+        price: taxMode === "inclusive" ? item.price * (1 + TAX_RATE) : item.price,
+        originalPrice: item.price, // Keep original price for backend
         tax_percentage: item.tax_percentage || TAX_RATE * 100,
         qty: 1 
       }];
@@ -277,10 +310,11 @@ export default function POSApp() {
     try {
       const invoiceData = {
         customer_id: selectedCustomer?.contact_id,
+        is_inclusive_tax: taxMode === "inclusive",
         line_items: cart.map(item => ({
           item_id: item.id,
           quantity: item.qty,
-          rate: item.price,
+          rate: item.originalPrice || item.price, // Use original price for backend
           tax_percentage: item.tax_percentage
         })),
         payment_mode: paymentMode,
@@ -325,16 +359,6 @@ export default function POSApp() {
     </svg>
   );
 
-  const ListIcon = () => (
-    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <line x1="8" y1="6" x2="21" y2="6" />
-      <line x1="8" y1="12" x2="21" y2="12" />
-      <line x1="8" y1="18" x2="21" y2="18" />
-      <circle cx="3" cy="6" r="1" />
-      <circle cx="3" cy="12" r="1" />
-      <circle cx="3" cy="18" r="1" />
-    </svg>
-  );
 
   return (
     <div className="min-h-screen w-full">
@@ -493,7 +517,7 @@ export default function POSApp() {
                           <div className="text-2xl mb-2">📦</div>
                           <div className="text-sm font-medium text-center">{item.name}</div>
                           {item.sku && <div className="text-xs text-slate-500 mt-1">{item.sku}</div>}
-                          <div className="text-lg font-bold mt-2">{formatCurrency(item.price)}</div>
+                          <div className="text-lg font-bold mt-2">{formatCurrency(taxMode === "inclusive" ? item.price * (1 + TAX_RATE) : item.price)}</div>
                           {item.stock_on_hand !== undefined && (
                             <div className="text-xs text-slate-500 mt-1">Stock: {item.stock_on_hand}</div>
                           )}
@@ -511,7 +535,7 @@ export default function POSApp() {
                             {item.stock_on_hand !== undefined && (
                               <span className="text-sm text-slate-500">Stock: {item.stock_on_hand}</span>
                             )}
-                            <span className="font-bold">{formatCurrency(item.price)}</span>
+                            <span className="font-bold">{formatCurrency(taxMode === "inclusive" ? item.price * (1 + TAX_RATE) : item.price)}</span>
                             <Plus className="w-5 h-5 text-emerald-600" />
                           </div>
                         </>
@@ -671,6 +695,37 @@ export default function POSApp() {
               )}
             </div>
 
+            {/* Tax Mode Toggle */}
+            {cart.length > 0 && (
+              <div className="border-t border-slate-200 dark:border-slate-800 p-3 flex-shrink-0">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-sm font-medium">Tax Mode:</span>
+                  <div className="flex bg-slate-100 dark:bg-slate-800 rounded-lg p-1">
+                    <button
+                      onClick={() => setTaxMode("exclusive")}
+                      className={`px-3 py-1 text-xs rounded-md transition-all ${
+                        taxMode === "exclusive"
+                          ? "bg-white dark:bg-slate-700 shadow-sm"
+                          : "hover:bg-slate-200 dark:hover:bg-slate-700"
+                      }`}
+                    >
+                      Tax Exclusive
+                    </button>
+                    <button
+                      onClick={() => setTaxMode("inclusive")}
+                      className={`px-3 py-1 text-xs rounded-md transition-all ${
+                        taxMode === "inclusive"
+                          ? "bg-white dark:bg-slate-700 shadow-sm"
+                          : "hover:bg-slate-200 dark:hover:bg-slate-700"
+                      }`}
+                    >
+                      Tax Inclusive
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Totals */}
             {cart.length > 0 && (
               <div className="border-t border-slate-200 dark:border-slate-800 p-3 space-y-2 flex-shrink-0">
@@ -679,7 +734,7 @@ export default function POSApp() {
                   <span>{formatCurrency(subtotal)}</span>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span>VAT (15%)</span>
+                  <span>VAT (15%) {taxMode === "inclusive" ? "(included)" : ""}</span>
                   <span>{formatCurrency(tax)}</span>
                 </div>
                 <div className="flex justify-between text-lg font-bold">
