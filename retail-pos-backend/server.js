@@ -430,25 +430,50 @@ app.get('/api/items', async (req, res) => {
     try {
         await ensureValidToken();
         
-        const response = await axios.get(`${ZOHO_BOOKS_API_URL}/items`, {
-            headers: {
-                'Authorization': `Zoho-oauthtoken ${accessToken}`
-            },
-            params: {
-                organization_id: process.env.ZOHO_ORGANIZATION_ID
-            }
-        });
+        // Fetch all pages of items
+        let allItems = [];
+        let page = 1;
+        let hasMorePages = true;
         
-        console.log(`[API] Received ${response.data.items.length} items from Zoho`);
+        while (hasMorePages) {
+            console.log(`[API] Fetching page ${page}...`);
+            
+            const response = await axios.get(`${ZOHO_BOOKS_API_URL}/items`, {
+                headers: {
+                    'Authorization': `Zoho-oauthtoken ${accessToken}`
+                },
+                params: {
+                    organization_id: process.env.ZOHO_ORGANIZATION_ID,
+                    per_page: 200, // Max per page for Zoho Books
+                    page: page
+                }
+            });
+            
+            if (response.data.items && response.data.items.length > 0) {
+                allItems = allItems.concat(response.data.items);
+                console.log(`[API] Page ${page}: ${response.data.items.length} items, Total: ${allItems.length}`);
+                
+                // Check if there are more pages
+                if (response.data.items.length < 200) {
+                    hasMorePages = false;
+                } else {
+                    page++;
+                }
+            } else {
+                hasMorePages = false;
+            }
+        }
+        
+        console.log(`[API] Received ${allItems.length} items from Zoho (${page} pages)`);
         
         // Log first item to see all available fields
-        if (response.data.items.length > 0) {
+        if (allItems.length > 0) {
             console.log('[API] Sample item from Zoho (first item):');
-            console.log(JSON.stringify(response.data.items[0], null, 2));
+            console.log(JSON.stringify(allItems[0], null, 2));
         }
         
         // Filter out inactive items and transform with unit conversion
-        const activeItems = response.data.items.filter(item => {
+        const activeItems = allItems.filter(item => {
             // Check multiple conditions for active status
             const isActive = item.status === 'active' && item.is_active !== false;
             if (!isActive) {
@@ -456,7 +481,7 @@ app.get('/api/items', async (req, res) => {
             }
             return isActive;
         });
-        console.log(`[API] Filtered to ${activeItems.length} active items (excluded ${response.data.items.length - activeItems.length} inactive items)`);
+        console.log(`[API] Filtered to ${activeItems.length} active items (excluded ${allItems.length - activeItems.length} inactive items)`);
         
         // Transform items with unit conversion and price calculation
         const items = activeItems.map((item, index) => {
