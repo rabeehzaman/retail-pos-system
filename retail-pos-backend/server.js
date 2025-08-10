@@ -164,6 +164,11 @@ async function refreshAccessToken() {
 // Ensure token is valid
 async function ensureValidToken() {
     if (!accessToken || !tokenExpiresAt || Date.now() >= tokenExpiresAt - 300000) {
+        if (!refreshToken) {
+            // No refresh token available - throw specific error for re-authentication
+            const hoursUntilExpiry = tokenExpiresAt ? Math.max(0, (tokenExpiresAt - Date.now()) / (1000 * 60 * 60)) : 0;
+            throw new Error(`Authentication required: Access token ${tokenExpiresAt ? `expires in ${hoursUntilExpiry.toFixed(1)} hours` : 'has expired'} and no refresh token available. Please re-authenticate.`);
+        }
         await refreshAccessToken();
     }
     return accessToken;
@@ -238,12 +243,25 @@ app.get('/', (req, res) => {
 app.get('/auth/status', (req, res) => {
     const now = Date.now();
     const expiresIn = tokenExpiresAt ? Math.max(0, Math.floor((tokenExpiresAt - now) / 1000)) : null;
+    const expiresInHours = expiresIn ? (expiresIn / 3600).toFixed(1) : null;
+    const needsReauth = !accessToken || !tokenExpiresAt || now >= tokenExpiresAt - (24 * 60 * 60 * 1000); // 24 hours warning
+    const critical = !accessToken || !tokenExpiresAt || now >= tokenExpiresAt - (2 * 60 * 60 * 1000); // 2 hours critical
     
     res.json({ 
         authenticated: !!accessToken,
         hasRefreshToken: !!refreshToken,
         tokenExpiresIn: expiresIn,
-        organizationId: process.env.ZOHO_ORGANIZATION_ID
+        tokenExpiresInHours: expiresInHours,
+        organizationId: process.env.ZOHO_ORGANIZATION_ID,
+        needsReauth: needsReauth,
+        critical: critical,
+        status: !accessToken ? 'not_authenticated' : 
+                critical ? 'critical' : 
+                needsReauth ? 'warning' : 'good',
+        message: !accessToken ? 'Not authenticated' :
+                critical ? `Token expires in ${expiresInHours}h - Re-authenticate immediately` :
+                needsReauth ? `Token expires in ${expiresInHours}h - Re-authenticate soon` :
+                `Token valid for ${expiresInHours}h`
     });
 });
 
@@ -305,7 +323,8 @@ app.get('/auth/login', (req, res) => {
         `&client_id=${process.env.ZOHO_CLIENT_ID}` +
         `&response_type=code` +
         `&redirect_uri=${encodeURIComponent(getRedirectUri())}` +
-        `&access_type=offline`;
+        `&access_type=offline` +
+        `&prompt=consent`;
     
     res.json({ authUrl });
 });
