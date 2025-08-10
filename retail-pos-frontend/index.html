@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TMR POS - Zoho Books Integration</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {}
+            }
+        }
+    </script>
+    <style>
+        /* Hide scrollbars for horizontal scrolling */
+        .scrollbar-none {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+        .scrollbar-none::-webkit-scrollbar {
+            display: none;
+        }
+        
+        /* Ensure proper scroll containment */
+        .scroll-contain {
+            overscroll-behavior: contain;
+        }
+        
+        /* Force separate scroll containers */
+        .scroll-independent {
+            contain: layout style;
+            overflow-anchor: none;
+        }
+        
+        /* Ensure viewport height calculations */
+        html, body {
+            height: 100%;
+            overflow: hidden;
+        }
+        
+        #root {
+            height: 100vh;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+    
+    <!-- React and Babel for JSX -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+    
+    <!-- Load the POS App (v2 - testing without conversion ID) -->
+    <script src="POSApp.js?v=2"></script>
+    <script>
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(React.createElement(POSApp));
+    </script>
+</body>
+</html>
