@@ -3,7 +3,7 @@ const { useState, useEffect, useMemo } = React;
 
 const TAX_RATE = 0.15; // 15% VAT for KSA
 const CURRENCY = "SAR";
-const BACKEND_URL = "https://retail-pos-backend-production.up.railway.app";
+const BACKEND_URL = "https://retail-pos-backend-production.up.railway.app"; // Railway backend URL
 
 function formatCurrency(n) {
   return new Intl.NumberFormat("en-SA", { style: "currency", currency: CURRENCY }).format(n);
@@ -16,6 +16,7 @@ function POSApp() {
   const [activeTab, setActiveTab] = useState("products");
   const [cart, setCart] = useState([]);
   const [viewMode, setViewMode] = useState("grid");
+  const [taxMode, setTaxMode] = useState("exclusive"); // "inclusive" or "exclusive"
   
   // Zoho integration states
   const [authStatus, setAuthStatus] = useState({ authenticated: false });
@@ -90,6 +91,18 @@ function POSApp() {
     const saved = localStorage.getItem("theme");
     if (saved === "dark") setDark(true);
   }, []);
+
+  // Update cart prices when tax mode changes
+  useEffect(() => {
+    setCart(prev => prev.map(item => {
+      const basePrice = item.originalPrice || item.price;
+      return {
+        ...item,
+        originalPrice: item.originalPrice || item.price, // Ensure originalPrice is set
+        price: taxMode === "inclusive" ? basePrice * (1 + TAX_RATE) : basePrice
+      };
+    }));
+  }, [taxMode]);
 
   // Check auth status
   async function checkAuthStatus() {
@@ -199,11 +212,30 @@ function POSApp() {
     );
   }, [search, category, items]);
 
-  // Cart calculations
+  // Cart calculations with tax mode support
   const subtotal = useMemo(() => cart.reduce((sum, line) => sum + line.price * line.qty, 0), [cart]);
   const subtotalQty = useMemo(() => cart.reduce((sum, line) => sum + line.qty, 0), [cart]);
-  const tax = useMemo(() => +(subtotal * TAX_RATE).toFixed(2), [subtotal]);
-  const total = useMemo(() => +(subtotal + tax).toFixed(2), [subtotal, tax]);
+  
+  // For tax inclusive mode, tax is already included in the subtotal
+  const tax = useMemo(() => {
+    if (taxMode === "inclusive") {
+      // Tax is already included in prices, calculate the tax portion
+      return +(subtotal - (subtotal / (1 + TAX_RATE))).toFixed(2);
+    } else {
+      // Tax exclusive - add tax on top
+      return +(subtotal * TAX_RATE).toFixed(2);
+    }
+  }, [subtotal, taxMode]);
+  
+  const total = useMemo(() => {
+    if (taxMode === "inclusive") {
+      // Total is same as subtotal (tax already included)
+      return +subtotal.toFixed(2);
+    } else {
+      // Add tax to subtotal
+      return +(subtotal + tax).toFixed(2);
+    }
+  }, [subtotal, tax, taxMode]);
 
   // Cart operations with unit support
   function addToCart(item, selectedUnit = null) {
@@ -245,7 +277,8 @@ function POSApp() {
       const newCartItem = {
         id: item.id,
         name: item.name,
-        price: price,
+        price: taxMode === "inclusive" ? price * (1 + TAX_RATE) : price,
+        originalPrice: price, // Keep original price for backend
         unit: unit,
         storedUnit: item.storedUnit,  // Keep original unit for reference
         tax_percentage: item.tax_percentage || TAX_RATE * 100,
@@ -330,7 +363,7 @@ function POSApp() {
         const lineItem = {
           item_id: item.id,
           quantity: item.qty,
-          rate: item.price,
+          rate: item.originalPrice || item.price, // Use original price for backend
           tax_percentage: item.tax_percentage
         };
         
@@ -372,6 +405,7 @@ function POSApp() {
       
       const invoiceData = {
         customer_id: selectedCustomer?.contact_id,
+        is_inclusive_tax: taxMode === "inclusive",
         line_items: lineItems,
         payment_mode: paymentMode,
         notes: `POS Sale - ${new Date().toLocaleString()}${unitNote}`
@@ -603,7 +637,7 @@ function POSApp() {
                       React.createElement('div', { className: "text-sm font-medium text-center" }, item.name),
                       item.sku && React.createElement('div', { className: "text-xs text-slate-500 mt-1" }, item.sku),
                       React.createElement('div', { className: "text-lg font-bold mt-2" }, 
-                        `${formatCurrency(item.price)} / ${item.defaultUnit || 'PCS'}`
+                        `${formatCurrency(taxMode === "inclusive" ? item.price * (1 + TAX_RATE) : item.price)} / ${item.defaultUnit || 'PCS'}`
                       ),
                       item.hasConversion && React.createElement('div', { className: "text-xs text-slate-500 mt-1" }, 
                         `CTN: ${formatCurrency(item.cartonPrice)}`
@@ -623,7 +657,7 @@ function POSApp() {
                         item.stock_on_hand !== undefined && 
                           React.createElement('span', { className: "text-sm text-slate-500" }, `Stock: ${item.stock_on_hand}`),
                         React.createElement('span', { className: "font-bold" }, 
-                          `${formatCurrency(item.price)} / ${item.defaultUnit || 'PCS'}`
+                          `${formatCurrency(taxMode === "inclusive" ? item.price * (1 + TAX_RATE) : item.price)} / ${item.defaultUnit || 'PCS'}`
                         ),
                         item.hasConversion && React.createElement('span', { className: "text-xs text-slate-500" }, 
                           `(CTN: ${formatCurrency(item.cartonPrice)})`
@@ -730,6 +764,23 @@ function POSApp() {
                 )
               ),
               
+              // Tax Mode Toggle
+              cart.length > 0 && React.createElement('div', { className: "border-t border-slate-200 dark:border-slate-800 p-3 mt-4" },
+                React.createElement('div', { className: "flex items-center justify-between mb-3" },
+                  React.createElement('span', { className: "text-sm font-medium" }, "Tax Mode:"),
+                  React.createElement('div', { className: "flex bg-slate-100 dark:bg-slate-800 rounded-lg p-1" },
+                    React.createElement('button', {
+                      onClick: () => setTaxMode("exclusive"),
+                      className: `px-3 py-1 text-xs rounded-md transition-all ${taxMode === "exclusive" ? "bg-white dark:bg-slate-700 shadow-sm" : "hover:bg-slate-200 dark:hover:bg-slate-700"}`
+                    }, "Tax Exclusive"),
+                    React.createElement('button', {
+                      onClick: () => setTaxMode("inclusive"),
+                      className: `px-3 py-1 text-xs rounded-md transition-all ${taxMode === "inclusive" ? "bg-white dark:bg-slate-700 shadow-sm" : "hover:bg-slate-200 dark:hover:bg-slate-700"}`
+                    }, "Tax Inclusive")
+                  )
+                )
+              ),
+              
               // Totals section moved here - right after cart items
               cart.length > 0 && React.createElement('div', { className: "bg-slate-50 dark:bg-slate-800 rounded-lg p-3 mt-4 space-y-2" },
                 React.createElement('div', { className: "flex justify-between text-sm" },
@@ -737,7 +788,7 @@ function POSApp() {
                   React.createElement('span', null, formatCurrency(subtotal))
                 ),
                 React.createElement('div', { className: "flex justify-between text-sm" },
-                  React.createElement('span', null, "VAT (15%)"),
+                  React.createElement('span', null, `VAT (15%) ${taxMode === "inclusive" ? "(included)" : ""}`),
                   React.createElement('span', null, formatCurrency(tax))
                 ),
                 React.createElement('div', { className: "flex justify-between text-lg font-bold border-t border-slate-200 dark:border-slate-600 pt-2" },
