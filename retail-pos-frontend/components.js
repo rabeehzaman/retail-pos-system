@@ -70,7 +70,7 @@ const buttonVariants = cva(
   }
 );
 
-export function Button({ className, variant, size, asChild = false, ...props }) {
+function Button({ className, variant, size, asChild = false, ...props }) {
   const Comp = asChild ? 'span' : 'button';
   
   return React.createElement(Comp, {
@@ -80,7 +80,7 @@ export function Button({ className, variant, size, asChild = false, ...props }) 
 }
 
 // Input Component (shadcn)
-export function Input({ className, type = "text", ...props }) {
+function Input({ className, type = "text", ...props }) {
   return React.createElement('input', {
     type,
     className: cn(
@@ -92,42 +92,42 @@ export function Input({ className, type = "text", ...props }) {
 }
 
 // Card Components (shadcn)
-export function Card({ className, ...props }) {
+function Card({ className, ...props }) {
   return React.createElement('div', {
     className: cn("rounded-xl border bg-card text-card-foreground shadow", className),
     ...props
   });
 }
 
-export function CardHeader({ className, ...props }) {
+function CardHeader({ className, ...props }) {
   return React.createElement('div', {
     className: cn("flex flex-col space-y-1.5 p-6", className),
     ...props
   });
 }
 
-export function CardTitle({ className, ...props }) {
+function CardTitle({ className, ...props }) {
   return React.createElement('h3', {
     className: cn("font-semibold leading-none tracking-tight", className),
     ...props
   });
 }
 
-export function CardDescription({ className, ...props }) {
+function CardDescription({ className, ...props }) {
   return React.createElement('p', {
     className: cn("text-sm text-muted-foreground", className),
     ...props
   });
 }
 
-export function CardContent({ className, ...props }) {
+function CardContent({ className, ...props }) {
   return React.createElement('div', {
     className: cn("p-6 pt-0", className),
     ...props
   });
 }
 
-export function CardFooter({ className, ...props }) {
+function CardFooter({ className, ...props }) {
   return React.createElement('div', {
     className: cn("flex items-center p-6 pt-0", className),
     ...props
@@ -135,7 +135,7 @@ export function CardFooter({ className, ...props }) {
 }
 
 // Badge Component
-export function Badge({ className, variant = "default", ...props }) {
+function Badge({ className, variant = "default", ...props }) {
   const variants = {
     default: "border-transparent bg-primary text-primary-foreground shadow hover:bg-primary/80",
     secondary: "border-transparent bg-secondary text-secondary-foreground hover:bg-secondary/80",
@@ -154,7 +154,7 @@ export function Badge({ className, variant = "default", ...props }) {
 }
 
 // Separator Component
-export function Separator({ className, orientation = "horizontal", ...props }) {
+function Separator({ className, orientation = "horizontal", ...props }) {
   return React.createElement('div', {
     className: cn(
       "shrink-0 bg-border",
@@ -166,7 +166,7 @@ export function Separator({ className, orientation = "horizontal", ...props }) {
 }
 
 // Enhanced Select components (simplified for this implementation)
-export function Select({ children, value, onValueChange }) {
+function Select({ children, value, onValueChange }) {
   return React.createElement('select', {
     value,
     onChange: (e) => onValueChange && onValueChange(e.target.value),
@@ -174,12 +174,12 @@ export function Select({ children, value, onValueChange }) {
   }, children);
 }
 
-export function SelectOption({ value, children }) {
+function SelectOption({ value, children }) {
   return React.createElement('option', { value }, children);
 }
 
 // Dialog components (simplified implementation)
-export function Dialog({ open, onOpenChange, children }) {
+function Dialog({ open, onOpenChange, children }) {
   if (!open) return null;
   
   return React.createElement('div', {
@@ -196,38 +196,38 @@ export function Dialog({ open, onOpenChange, children }) {
   );
 }
 
-export function DialogHeader({ children, className }) {
+function DialogHeader({ children, className }) {
   return React.createElement('div', {
     className: cn("flex flex-col space-y-2 text-center sm:text-left", className)
   }, children);
 }
 
-export function DialogTitle({ children, className }) {
+function DialogTitle({ children, className }) {
   return React.createElement('h2', {
     className: cn("text-lg font-semibold", className)
   }, children);
 }
 
-export function DialogDescription({ children, className }) {
+function DialogDescription({ children, className }) {
   return React.createElement('p', {
     className: cn("text-sm text-muted-foreground", className)
   }, children);
 }
 
-export function DialogContent({ children, className }) {
+function DialogContent({ children, className }) {
   return React.createElement('div', {
     className: cn("mt-4", className)
   }, children);
 }
 
-export function DialogFooter({ children, className }) {
+function DialogFooter({ children, className }) {
   return React.createElement('div', {
     className: cn("flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2 mt-6", className)
   }, children);
 }
 
 // Table Components (shadcn)
-export function Table({ className, ...props }) {
+function Table({ className, ...props }) {
   return React.createElement('div', {
     className: "relative w-full overflow-auto"
   },
@@ -238,35 +238,35 @@ export function Table({ className, ...props }) {
   );
 }
 
-export function TableHeader({ className, ...props }) {
+function TableHeader({ className, ...props }) {
   return React.createElement('thead', {
     className: cn("[&_tr]:border-b", className),
     ...props
   });
 }
 
-export function TableBody({ className, ...props }) {
+function TableBody({ className, ...props }) {
   return React.createElement('tbody', {
     className: cn("[&_tr:last-child]:border-0", className),
     ...props
   });
 }
 
-export function TableRow({ className, ...props }) {
+function TableRow({ className, ...props }) {
   return React.createElement('tr', {
     className: cn("border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted", className),
     ...props
   });
 }
 
-export function TableHead({ className, ...props }) {
+function TableHead({ className, ...props }) {
   return React.createElement('th', {
     className: cn("h-10 px-2 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]", className),
     ...props
   });
 }
 
-export function TableCell({ className, ...props }) {
+function TableCell({ className, ...props }) {
   return React.createElement('td', {
     className: cn("p-2 align-middle [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]", className),
     ...props
@@ -274,14 +274,14 @@ export function TableCell({ className, ...props }) {
 }
 
 // Loading Spinner Component
-export function LoadingSpinner({ className }) {
+function LoadingSpinner({ className }) {
   return React.createElement('div', {
     className: cn("animate-spin rounded-full border-2 border-gray-300 border-t-gray-900 h-4 w-4", className)
   });
 }
 
 // Toast/Alert Component (simplified)
-export function Toast({ variant = "default", className, children, ...props }) {
+function Toast({ variant = "default", className, children, ...props }) {
   const variants = {
     default: "bg-background text-foreground border",
     destructive: "bg-destructive text-destructive-foreground border-destructive",
@@ -297,3 +297,35 @@ export function Toast({ variant = "default", className, children, ...props }) {
     ...props
   }, children);
 }
+
+// Make all components available globally for the POSApp to use
+window.cn = cn;
+window.cva = cva;
+window.Button = Button;
+window.Card = Card;
+window.CardHeader = CardHeader;
+window.CardContent = CardContent;
+window.CardTitle = CardTitle;
+window.CardDescription = CardDescription;
+window.CardFooter = CardFooter;
+window.Input = Input;
+window.Select = Select;
+window.SelectItem = SelectItem;
+window.Dialog = Dialog;
+window.DialogTrigger = DialogTrigger;
+window.DialogContent = DialogContent;
+window.DialogHeader = DialogHeader;
+window.DialogTitle = DialogTitle;
+window.DialogDescription = DialogDescription;
+window.DialogFooter = DialogFooter;
+window.Badge = Badge;
+window.LoadingSpinner = LoadingSpinner;
+window.Toast = Toast;
+window.Separator = Separator;
+window.Table = Table;
+window.TableHeader = TableHeader;
+window.TableBody = TableBody;
+window.TableRow = TableRow;
+window.TableHead = TableHead;
+window.TableCell = TableCell;
+window.SelectOption = SelectOption;
