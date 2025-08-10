@@ -261,26 +261,36 @@ app.get('/auth/tokens', (req, res) => {
         });
     }
     
+    const refreshTokenIssue = !refreshToken;
+    const tokenExpiringSoon = tokenExpiresAt && (Date.now() + (24 * 60 * 60 * 1000)) >= tokenExpiresAt;
+    
     res.json({
         success: true,
         instructions: 'Copy these values to Railway environment variables:',
         environmentVariables: {
             ZOHO_ACCESS_TOKEN: accessToken,
-            ZOHO_REFRESH_TOKEN: refreshToken || '', // Allow empty refresh token
+            ZOHO_REFRESH_TOKEN: refreshToken || '',
             ZOHO_TOKEN_EXPIRES_AT: tokenExpiresAt ? tokenExpiresAt.toString() : ''
         },
         debug: {
             hasAccessToken: !!accessToken,
             hasRefreshToken: !!refreshToken,
             tokenExpiresAt: tokenExpiresAt,
-            expiresIn: tokenExpiresAt ? Math.max(0, Math.floor((tokenExpiresAt - Date.now()) / 1000)) : null
+            expiresIn: tokenExpiresAt ? Math.max(0, Math.floor((tokenExpiresAt - Date.now()) / 1000)) : null,
+            expiresInHours: tokenExpiresAt ? Math.max(0, Math.floor((tokenExpiresAt - Date.now()) / (1000 * 60 * 60))) : null,
+            tokenExpiringSoon: tokenExpiringSoon,
+            refreshTokenMissing: refreshTokenIssue
         },
+        warnings: [
+            ...(refreshTokenIssue ? ['⚠️ No refresh token - authentication will fail when access token expires'] : []),
+            ...(tokenExpiringSoon ? ['⚠️ Access token expires within 24 hours'] : [])
+        ],
         railwayInstructions: [
             '1. Go to Railway Dashboard → Your Project → retail-pos-backend → Variables',
             '2. Add/Update the environment variables above',
             '3. Restart the service',
             '4. Tokens will persist across service restarts',
-            '5. Note: Refresh token may be empty - will get one on next auth cycle'
+            ...(refreshTokenIssue ? ['5. ⚠️ IMPORTANT: Missing refresh token will cause auth failures!'] : ['5. ✅ Refresh token available for automatic renewal'])
         ]
     });
 });
@@ -309,7 +319,14 @@ app.post('/auth/exchange-code', async (req, res) => {
     }
     
     try {
-        console.log('Exchanging authorization code for tokens...');
+        console.log('🔄 Manual token exchange...');
+        console.log('Request parameters:', {
+            grant_type: 'authorization_code',
+            client_id: process.env.ZOHO_CLIENT_ID,
+            redirect_uri: getRedirectUri(),
+            code: code ? `${code.substring(0, 20)}...` : 'null'
+        });
+        
         const tokenResponse = await axios.post(`${ZOHO_ACCOUNTS_URL}/oauth/v2/token`, null, {
             params: {
                 grant_type: 'authorization_code',
@@ -320,17 +337,33 @@ app.post('/auth/exchange-code', async (req, res) => {
             }
         });
         
+        console.log('✅ Manual token exchange successful!');
+        console.log('Response data keys:', Object.keys(tokenResponse.data));
+        console.log('Has access_token:', !!tokenResponse.data.access_token);
+        console.log('Has refresh_token:', !!tokenResponse.data.refresh_token);
+        console.log('Full response:', JSON.stringify(tokenResponse.data, null, 2));
+        
         accessToken = tokenResponse.data.access_token;
-        refreshToken = tokenResponse.data.refresh_token;
+        refreshToken = tokenResponse.data.refresh_token || null;
         tokenExpiresAt = Date.now() + (tokenResponse.data.expires_in * 1000 || 3600 * 1000);
         
+        // Log what we're storing
+        console.log('Storing tokens:', {
+            hasAccessToken: !!accessToken,
+            hasRefreshToken: !!refreshToken,
+            refreshTokenValue: refreshToken ? `${refreshToken.substring(0, 20)}...` : 'null'
+        });
+        
         saveTokens();
-        console.log('✅ Token exchange successful!');
         
         res.json({ 
             success: true, 
             message: 'Authentication successful',
-            hasRefreshToken: !!refreshToken
+            hasRefreshToken: !!refreshToken,
+            debug: {
+                receivedRefreshToken: !!tokenResponse.data.refresh_token,
+                storedRefreshToken: !!refreshToken
+            }
         });
     } catch (error) {
         console.error('Token exchange error:', error.response?.data || error);
@@ -362,6 +395,14 @@ app.get('/auth/callback', async (req, res) => {
     }
     
     try {
+        console.log('🔄 Exchanging authorization code for tokens...');
+        console.log('Request parameters:', {
+            grant_type: 'authorization_code',
+            client_id: process.env.ZOHO_CLIENT_ID,
+            redirect_uri: getRedirectUri(),
+            code: code ? `${code.substring(0, 20)}...` : 'null'
+        });
+        
         const tokenResponse = await axios.post(`${ZOHO_ACCOUNTS_URL}/oauth/v2/token`, null, {
             params: {
                 grant_type: 'authorization_code',
@@ -372,16 +413,31 @@ app.get('/auth/callback', async (req, res) => {
             }
         });
         
+        console.log('✅ Token exchange successful!');
+        console.log('Response data keys:', Object.keys(tokenResponse.data));
+        console.log('Has access_token:', !!tokenResponse.data.access_token);
+        console.log('Has refresh_token:', !!tokenResponse.data.refresh_token);
+        console.log('Expires in:', tokenResponse.data.expires_in);
+        console.log('Full response:', JSON.stringify(tokenResponse.data, null, 2));
+        
         accessToken = tokenResponse.data.access_token;
-        refreshToken = tokenResponse.data.refresh_token;
+        refreshToken = tokenResponse.data.refresh_token || null;
         tokenExpiresAt = Date.now() + (tokenResponse.data.expires_in * 1000 || 3600 * 1000);
+        
+        // Log what we're storing
+        console.log('Storing tokens:', {
+            hasAccessToken: !!accessToken,
+            hasRefreshToken: !!refreshToken,
+            refreshTokenValue: refreshToken ? `${refreshToken.substring(0, 20)}...` : 'null',
+            expiresAt: new Date(tokenExpiresAt).toISOString()
+        });
         
         saveTokens();
         
         // Redirect to React app
         res.redirect(`${getFrontendUrl()}/?auth=success`);
     } catch (error) {
-        console.error('Token exchange error:', error.response?.data || error);
+        console.error('❌ Token exchange failed:', error.response?.data || error);
         res.redirect(`${getFrontendUrl()}/?auth=error`);
     }
 });
