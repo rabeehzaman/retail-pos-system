@@ -30,6 +30,10 @@ export default function POSApp() {
   const [loading, setLoading] = useState(false);
   const [syncStatus, setSyncStatus] = useState("");
   const [lastInvoice, setLastInvoice] = useState(null);
+  
+  // Customer search states
+  const [customerSearch, setCustomerSearch] = useState("");
+  const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
 
   // Check authentication status on mount
   useEffect(() => {
@@ -58,6 +62,18 @@ export default function POSApp() {
     const saved = localStorage.getItem("theme");
     if (saved === "dark") setDark(true);
   }, []);
+
+  // Close customer dropdown when clicking outside
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (showCustomerDropdown && !event.target.closest('.customer-search-container')) {
+        setShowCustomerDropdown(false);
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showCustomerDropdown]);
 
   // Check auth status
   async function checkAuthStatus() {
@@ -102,6 +118,26 @@ export default function POSApp() {
     }
   }
 
+  // Fetch customers with optional search
+  async function fetchCustomers(search = "") {
+    try {
+      const url = new URL(`${BACKEND_URL}/api/customers`);
+      if (search.trim()) {
+        url.searchParams.append('search', search.trim());
+      }
+      
+      const response = await fetch(url);
+      if (response.ok) {
+        const data = await response.json();
+        setCustomers(data.customers || []);
+        return data.customers || [];
+      }
+    } catch (error) {
+      console.error("Failed to fetch customers:", error);
+    }
+    return [];
+  }
+
   // Fetch data from Zoho
   async function fetchData() {
     setLoading(true);
@@ -117,11 +153,7 @@ export default function POSApp() {
       }
       
       // Fetch customers
-      const customersResponse = await fetch(`${BACKEND_URL}/api/customers`);
-      if (customersResponse.ok) {
-        const customersData = await customersResponse.json();
-        setCustomers(customersData.customers || []);
-      }
+      await fetchCustomers();
       
       setSyncStatus("Data synced successfully!");
     } catch (error) {
@@ -131,6 +163,32 @@ export default function POSApp() {
       setLoading(false);
     }
   }
+
+  // Debounced customer search
+  useEffect(() => {
+    if (!authStatus.authenticated) return;
+    
+    const timeoutId = setTimeout(() => {
+      if (customerSearch.trim().length >= 2 || customerSearch.trim().length === 0) {
+        fetchCustomers(customerSearch);
+      }
+    }, 300);
+    
+    return () => clearTimeout(timeoutId);
+  }, [customerSearch, authStatus.authenticated]);
+
+  // Filter customers based on search
+  const filteredCustomers = useMemo(() => {
+    if (!customerSearch.trim()) return customers;
+    
+    const searchTerm = customerSearch.toLowerCase().trim();
+    return customers.filter(customer => 
+      customer.contact_name?.toLowerCase().includes(searchTerm) ||
+      customer.company_name?.toLowerCase().includes(searchTerm) ||
+      customer.email?.toLowerCase().includes(searchTerm) ||
+      customer.mobile?.includes(searchTerm)
+    );
+  }, [customers, customerSearch]);
 
   // Get unique categories
   const categories = useMemo(() => {
@@ -469,24 +527,98 @@ export default function POSApp() {
           <div className={`md:w-96 border-l border-slate-200 dark:border-slate-800 flex flex-col overflow-hidden ${
             activeTab === "products" && "hidden md:flex"
           }`}>
-            {/* Customer Selection */}
-            {customers.length > 0 && (
+            {/* Customer Search & Selection */}
+            {authStatus.authenticated && (
               <div className="p-3 border-b border-slate-200 dark:border-slate-800 flex-shrink-0">
-                <select
-                  value={selectedCustomer?.contact_id || ""}
-                  onChange={(e) => {
-                    const customer = customers.find(c => c.contact_id === e.target.value);
-                    setSelectedCustomer(customer || null);
-                  }}
-                  className="w-full px-3 py-2 rounded-lg bg-slate-100 dark:bg-slate-800"
-                >
-                  <option value="">Walk-in Customer</option>
-                  {customers.map(customer => (
-                    <option key={customer.contact_id} value={customer.contact_id}>
-                      {customer.contact_name}
-                    </option>
-                  ))}
-                </select>
+                <div className="relative customer-search-container">
+                  <div className="relative">
+                    <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <input
+                      type="text"
+                      placeholder={selectedCustomer ? selectedCustomer.contact_name : "Search customers or use Walk-in"}
+                      value={customerSearch}
+                      onChange={(e) => setCustomerSearch(e.target.value)}
+                      onFocus={() => setShowCustomerDropdown(true)}
+                      className="w-full pl-9 pr-3 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 outline-none focus:ring-2 ring-emerald-500"
+                    />
+                    {selectedCustomer && (
+                      <button
+                        onClick={() => {
+                          setSelectedCustomer(null);
+                          setCustomerSearch("");
+                        }}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                  
+                  {/* Customer Dropdown */}
+                  {showCustomerDropdown && !selectedCustomer && (
+                    <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg z-50 max-h-48 overflow-y-auto">
+                      {/* Walk-in option */}
+                      <button
+                        onClick={() => {
+                          setSelectedCustomer(null);
+                          setCustomerSearch("");
+                          setShowCustomerDropdown(false);
+                        }}
+                        className="w-full text-left px-3 py-2 hover:bg-slate-100 dark:hover:bg-slate-700 border-b border-slate-200 dark:border-slate-700"
+                      >
+                        <div className="font-medium">Walk-in Customer</div>
+                        <div className="text-xs text-slate-500">No customer account needed</div>
+                      </button>
+                      
+                      {/* Customer options */}
+                      {filteredCustomers.slice(0, 20).map(customer => (
+                        <button
+                          key={customer.contact_id}
+                          onClick={() => {
+                            setSelectedCustomer(customer);
+                            setCustomerSearch("");
+                            setShowCustomerDropdown(false);
+                          }}
+                          className="w-full text-left px-3 py-2 hover:bg-slate-100 dark:hover:bg-slate-700"
+                        >
+                          <div className="font-medium">{customer.contact_name}</div>
+                          {customer.company_name && (
+                            <div className="text-xs text-slate-500">{customer.company_name}</div>
+                          )}
+                          {customer.email && (
+                            <div className="text-xs text-slate-400">{customer.email}</div>
+                          )}
+                        </button>
+                      ))}
+                      
+                      {filteredCustomers.length === 0 && customerSearch.length >= 2 && (
+                        <div className="px-3 py-2 text-slate-500 text-sm">
+                          No customers found for "{customerSearch}"
+                        </div>
+                      )}
+                      
+                      {filteredCustomers.length > 20 && (
+                        <div className="px-3 py-2 text-slate-500 text-xs">
+                          Showing first 20 results. Continue typing to refine...
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+                
+                {/* Selected customer info */}
+                {selectedCustomer && (
+                  <div className="mt-2 p-2 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg text-sm">
+                    <div className="font-medium text-emerald-700 dark:text-emerald-400">
+                      {selectedCustomer.contact_name}
+                    </div>
+                    {selectedCustomer.company_name && (
+                      <div className="text-emerald-600 dark:text-emerald-500">
+                        {selectedCustomer.company_name}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 

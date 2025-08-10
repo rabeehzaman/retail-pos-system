@@ -556,20 +556,59 @@ app.get('/api/items', async (req, res) => {
 
 // Get customers from Zoho Books
 app.get('/api/customers', async (req, res) => {
+    console.log('\n========== FETCHING CUSTOMERS ==========');
     try {
         await ensureValidToken();
         
-        const response = await axios.get(`${ZOHO_BOOKS_API_URL}/contacts`, {
-            headers: {
-                'Authorization': `Zoho-oauthtoken ${accessToken}`
-            },
-            params: {
-                organization_id: process.env.ZOHO_ORGANIZATION_ID,
-                contact_type: 'customer'
-            }
-        });
+        const { search } = req.query;
         
-        res.json({ customers: response.data.contacts });
+        // Fetch all pages of customers
+        let allCustomers = [];
+        let page = 1;
+        let hasMorePages = true;
+        
+        while (hasMorePages) {
+            console.log(`[API] Fetching customers page ${page}...`);
+            
+            const params = {
+                organization_id: process.env.ZOHO_ORGANIZATION_ID,
+                contact_type: 'customer',
+                per_page: 200, // Max per page for Zoho Books
+                page: page
+            };
+            
+            // Add search parameter if provided
+            if (search && search.trim()) {
+                params.search_text = search.trim();
+                console.log(`[API] Searching for: "${search.trim()}"`);
+            }
+            
+            const response = await axios.get(`${ZOHO_BOOKS_API_URL}/contacts`, {
+                headers: {
+                    'Authorization': `Zoho-oauthtoken ${accessToken}`
+                },
+                params: params
+            });
+            
+            if (response.data.contacts && response.data.contacts.length > 0) {
+                allCustomers = allCustomers.concat(response.data.contacts);
+                console.log(`[API] Page ${page}: ${response.data.contacts.length} customers, Total: ${allCustomers.length}`);
+                
+                // Check if there are more pages
+                if (response.data.contacts.length < 200) {
+                    hasMorePages = false;
+                } else {
+                    page++;
+                }
+            } else {
+                hasMorePages = false;
+            }
+        }
+        
+        console.log(`[API] Received ${allCustomers.length} customers from Zoho (${page} pages)`);
+        console.log('========== CUSTOMERS FETCH COMPLETE ==========\n');
+        
+        res.json({ customers: allCustomers });
     } catch (error) {
         console.error('Error fetching customers:', error.response?.data || error);
         
