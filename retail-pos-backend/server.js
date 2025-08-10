@@ -472,6 +472,55 @@ app.post('/auth/logout', (req, res) => {
 
 // ==================== ZOHO BOOKS API ENDPOINTS ====================
 
+// Complete unit conversion mapping from Zoho Books
+const UNIT_CONVERSION_MAP = {
+    "PIECES": "9465000000009224",
+    "C12P": "9465000001006319",
+    "C8P": "9465000001006964",
+    "C10P": "9465000001006966",
+    "C6P": "9465000001006968",
+    "C20P": "9465000001006970",
+    "C60P": "9465000001006972",
+    "C24P": "9465000001006974",
+    "C30P": "9465000001006976",
+    "C25P": "9465000001006978",
+    "C18P": "9465000001006980",
+    "C16P": "9465000001006982",
+    "C50P": "9465000001006984",
+    "C72P": "9465000001006986",
+    "C4P": "9465000001006988",
+    "C36P": "9465000001006990",
+    "C5P": "9465000001006992",
+    "C26P": "9465000001006994",
+    "C48P": "9465000001006996",
+    "C32P": "9465000001006998",
+    "C40P": "9465000001007000",
+    "C15P": "9465000001021002",
+    "C100P": "9465000001021004",
+    "C3P": "9465000001021006",
+    "C140P": "9465000001021008",
+    "C150P": "9465000001021010",
+    "CANCELD14P": "9465000001021012",
+    "C35P": "9465000001021014",
+    "CTN": "9465000001021016",
+    "C45P": "9465000001021018",
+    "C80P": "9465000001021020",
+    "C3(RPT)": "9465000001021022",
+    "RAFTHA": "9465000000366030",
+    "OUTER": "9465000000366098",
+    "BAG": "9465000001021024",
+    "BAG(8)": "9465000001021026",
+    "TIN": "9465000001023397"
+};
+
+// Helper function to get unit conversion ID
+function getUnitConversionId(unit) {
+    if (!unit) return null;
+    const conversionId = UNIT_CONVERSION_MAP[unit.toUpperCase()];
+    console.log(`[UOM] Unit ${unit} -> Conversion ID: ${conversionId || 'NOT_FOUND'}`);
+    return conversionId || null;
+}
+
 // Helper function to parse unit and get pieces per carton
 function getPiecesPerCarton(unit) {
     console.log(`[UOM] Parsing unit: ${unit}`);
@@ -489,10 +538,15 @@ function getPiecesPerCarton(unit) {
         return pieces;
     }
     
-    // CTN without number = no conversion
+    // Special handling for specific units
     if (unit.toUpperCase() === 'CTN') {
         console.log('[UOM] Plain CTN found - no piece conversion available');
         return 0;
+    }
+    
+    if (unit.toUpperCase() === 'BAG(8)') {
+        console.log('[UOM] BAG(8) = 8 pieces per bag');
+        return 8;
     }
     
     console.log(`[UOM] Unknown unit pattern: ${unit}, defaulting to 1`);
@@ -744,7 +798,7 @@ app.post('/api/invoices', async (req, res) => {
                 console.log(`  - Unit added to line item: ${item.unit}`);
             }
             
-            // Add unit_conversion_id if provided
+            // Add unit_conversion_id if provided (frontend handles conversion ID mapping)
             if (item.unit_conversion_id) {
                 lineItem.unit_conversion_id = item.unit_conversion_id;
                 console.log(`  - Unit conversion ID added: ${item.unit_conversion_id}`);
@@ -859,6 +913,84 @@ app.post('/api/invoices', async (req, res) => {
         }
         
         console.log('========== INVOICE FAILED ==========\n');
+    }
+});
+
+// Download invoice PDF
+app.get('/api/invoices/:invoiceId/download', async (req, res) => {
+    console.log('\n========== DOWNLOADING INVOICE PDF ==========');
+    try {
+        await ensureValidToken();
+        
+        const { invoiceId } = req.params;
+        console.log(`[Download] Invoice ID: ${invoiceId}`);
+        
+        // Get invoice PDF from Zoho Books
+        const response = await axios.get(`${ZOHO_BOOKS_API_URL}/invoices/${invoiceId}`, {
+            headers: {
+                'Authorization': `Zoho-oauthtoken ${accessToken}`,
+                'Accept': 'application/pdf'
+            },
+            params: {
+                organization_id: process.env.ZOHO_ORGANIZATION_ID,
+                accept: 'pdf'
+            },
+            responseType: 'stream'
+        });
+        
+        console.log('[Download] PDF retrieved from Zoho Books');
+        
+        // Set headers for PDF download
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename="Invoice_${invoiceId}.pdf"`);
+        
+        // Pipe the PDF stream to the response
+        response.data.pipe(res);
+        
+        console.log('[Download] PDF download started');
+        console.log('========== DOWNLOAD COMPLETE ==========\n');
+        
+    } catch (error) {
+        console.error('[Download Error] Failed to download invoice:', error.response?.data || error.message);
+        
+        // Try alternative approach - get invoice details first, then PDF
+        try {
+            console.log('[Download] Trying alternative PDF download method...');
+            
+            const invoiceResponse = await axios.get(`${ZOHO_BOOKS_API_URL}/invoices/${req.params.invoiceId}/pdf`, {
+                headers: {
+                    'Authorization': `Zoho-oauthtoken ${accessToken}`
+                },
+                params: {
+                    organization_id: process.env.ZOHO_ORGANIZATION_ID
+                },
+                responseType: 'stream'
+            });
+            
+            res.setHeader('Content-Type', 'application/pdf');
+            res.setHeader('Content-Disposition', `attachment; filename="Invoice_${req.params.invoiceId}.pdf"`);
+            
+            invoiceResponse.data.pipe(res);
+            console.log('[Download] Alternative method succeeded');
+            
+        } catch (altError) {
+            console.error('[Download Error] Alternative method also failed:', altError.response?.data || altError.message);
+            
+            // Provide specific error codes for frontend handling
+            const status = error.response?.status || altError.response?.status || 500;
+            const errorMessage = status === 404 
+                ? 'Invoice PDF not found. It may still be generating.'
+                : status === 401 
+                ? 'Authentication error. Please refresh and try again.'
+                : 'Failed to download invoice PDF. Please try again.';
+                
+            res.status(status).json({ 
+                error: errorMessage,
+                details: error.response?.data || error.message,
+                invoiceId: req.params.invoiceId,
+                statusCode: status
+            });
+        }
     }
 });
 
