@@ -278,12 +278,24 @@ app.post('/auth/exchange-code', async (req, res) => {
     }
 });
 
+// Get frontend URL for redirects
+function getFrontendUrl() {
+    if (process.env.FRONTEND_URL) {
+        return process.env.FRONTEND_URL;
+    }
+    // Use Railway frontend URL in production
+    if (process.env.NODE_ENV === 'production') {
+        return 'https://retail-pos-frontend-production.up.railway.app';
+    }
+    return 'http://localhost:3000';
+}
+
 // OAuth callback
 app.get('/auth/callback', async (req, res) => {
     const { code } = req.query;
     
     if (!code) {
-        return res.redirect('http://localhost:3000/?auth=error');
+        return res.redirect(`${getFrontendUrl()}/?auth=error`);
     }
     
     try {
@@ -304,10 +316,10 @@ app.get('/auth/callback', async (req, res) => {
         saveTokens();
         
         // Redirect to React app
-        res.redirect('http://localhost:3000/?auth=success');
+        res.redirect(`${getFrontendUrl()}/?auth=success`);
     } catch (error) {
         console.error('Token exchange error:', error.response?.data || error);
-        res.redirect('http://localhost:3000/?auth=error');
+        res.redirect(`${getFrontendUrl()}/?auth=error`);
     }
 });
 
