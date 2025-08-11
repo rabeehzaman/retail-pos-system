@@ -1,4 +1,21 @@
-# React + Vite
+# TMR POS Frontend
+
+Modern React-based Point of Sale system with Zoho Books integration.
+
+## Features
+- ✅ Real-time product catalog from Zoho Books
+- ✅ Improved list and grid view layouts  
+- ✅ Cart management with tax calculations
+- ✅ Customer selection and invoice generation
+- ✅ Dark/light theme support
+- ✅ Auto-deploy from GitHub to Railway
+
+## Tech Stack
+- **Framework**: React + Vite
+- **Styling**: Tailwind CSS + Shadcn/ui
+- **Icons**: Lucide React
+- **HTTP Client**: Axios
+- **Deployment**: Railway (auto-deploy enabled)
 
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
