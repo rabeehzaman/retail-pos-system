@@ -705,7 +705,10 @@ function App() {
                             variant="ghost"
                             size="icon"
                             className="h-6 w-6"
-                            onClick={() => removeFromCart(item.id)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              removeFromCart(item.id);
+                            }}
                           >
                             <Trash2 className="h-3 w-3" />
                           </Button>
@@ -716,7 +719,10 @@ function App() {
                               variant="outline"
                               size="icon"
                               className="h-7 w-7"
-                              onClick={() => updateQuantity(item.id, -1)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                updateQuantity(item.id, -1);
+                              }}
                             >
                               <Minus className="h-3 w-3" />
                             </Button>
@@ -725,7 +731,10 @@ function App() {
                               variant="outline"
                               size="icon"
                               className="h-7 w-7"
-                              onClick={() => updateQuantity(item.id, 1)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                updateQuantity(item.id, 1);
+                              }}
                             >
                               <Plus className="h-3 w-3" />
                             </Button>
