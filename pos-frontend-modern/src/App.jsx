@@ -267,8 +267,8 @@ function App() {
     }))
   }
 
-  const removeFromCart = (id) => {
-    setCart(cart.filter(item => item.id !== id))
+  const removeFromCart = (id, unit) => {
+    setCart(cart.filter(item => !(item.id === id && item.unit === unit)))
   }
 
   const openEditItem = (item) => {
@@ -692,7 +692,7 @@ function App() {
               ) : (
                 <div className="space-y-3">
                   {cart.map(item => (
-                    <Card key={item.id} className="shimmer cursor-pointer hover:bg-accent/50" onClick={() => openEditItem(item)}>
+                    <Card key={`${item.id}-${item.unit}`} className="shimmer cursor-pointer hover:bg-accent/50" onClick={() => openEditItem(item)}>
                       <CardContent className="p-3">
                         <div className="flex items-start justify-between mb-2">
                           <div className="flex-1">
@@ -707,7 +707,7 @@ function App() {
                             className="h-6 w-6"
                             onClick={(e) => {
                               e.stopPropagation();
-                              removeFromCart(item.id);
+                              removeFromCart(item.id, item.unit);
                             }}
                           >
                             <Trash2 className="h-3 w-3" />
