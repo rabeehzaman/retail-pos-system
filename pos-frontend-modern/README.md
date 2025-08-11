@@ -9,6 +9,7 @@ Modern React-based Point of Sale system with Zoho Books integration.
 - ✅ Customer selection and invoice generation
 - ✅ Dark/light theme support
 - ✅ Auto-deploy from GitHub to Railway
+- ✅ Responsive design for all devices
 
 ## Tech Stack
 - **Framework**: React + Vite
