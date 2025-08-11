@@ -615,11 +615,8 @@ function App() {
                   <p className="text-sm text-muted-foreground">Try adjusting your search or filters</p>
                 </CardContent>
               </Card>
-            ) : (
-              <div className={cn(
-                "gap-4",
-                viewMode === "grid" ? "grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8" : "space-y-2"
-              )}>
+            ) : viewMode === "grid" ? (
+              <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-4">
                 {filteredItems.map(item => (
                   <Card 
                     key={item.id} 
@@ -661,6 +658,46 @@ function App() {
                       </div>
                     </CardContent>
                   </Card>
+                ))}
+              </div>
+            ) : (
+              <div className="space-y-1">
+                {filteredItems.map(item => (
+                  <div 
+                    key={item.id}
+                    className="flex items-center justify-between p-3 bg-white dark:bg-gray-800 border rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer transition-colors"
+                    onClick={(e) => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      addToCart(item)
+                    }}
+                  >
+                    <div className="flex items-center flex-1">
+                      <div className="flex-1 min-w-0">
+                        <h3 className="font-medium text-sm truncate">{item.name}</h3>
+                      </div>
+                    </div>
+                    
+                    <div className="flex items-center gap-4">
+                      {item.stock_on_hand && (
+                        <Badge 
+                          variant={item.stock_on_hand > 10 ? "success" : "warning"} 
+                          className="text-xs"
+                        >
+                          {item.stock_on_hand}
+                        </Badge>
+                      )}
+                      <div className="text-right">
+                        <div className="font-bold text-primary">
+                          {formatCurrency(taxMode === "inclusive" ? (item.price || item.rate || item.selling_price || 0) * 1.15 : (item.price || item.rate || item.selling_price || 0))}
+                        </div>
+                        <div className="text-xs text-muted-foreground">per PCS</div>
+                      </div>
+                      <Button size="icon" variant="ghost" className="h-8 w-8 hover:bg-primary hover:text-white">
+                        <Plus className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
                 ))}
               </div>
             )}
