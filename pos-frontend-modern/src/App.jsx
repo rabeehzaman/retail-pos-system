@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react'
-import { Search, ShoppingCart, Menu, Moon, Sun, RefreshCw, LogOut, Grid3x3, List, Plus, Minus, Trash2, Package, Users, CreditCard, TrendingUp, AlertCircle, Check } from 'lucide-react'
+import { Search, ShoppingCart, Menu, Moon, Sun, RefreshCw, LogOut, Grid3x3, List, Plus, Minus, Trash2, Package, Users, CreditCard, TrendingUp, AlertCircle, Check, Settings } from 'lucide-react'
 import axios from 'axios'
 import { Button } from './components/ui/button'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from './components/ui/card'
@@ -692,7 +692,7 @@ function App() {
               ) : (
                 <div className="space-y-3">
                   {cart.map(item => (
-                    <Card key={`${item.id}-${item.unit}`} className="shimmer cursor-pointer hover:bg-accent/50" onClick={() => openEditItem(item)}>
+                    <Card key={`${item.id}-${item.unit}`} className="shimmer">
                       <CardContent className="p-3">
                         <div className="flex items-start justify-between mb-2">
                           <div className="flex-1">
@@ -701,17 +701,24 @@ function App() {
                               {formatCurrency(item.price)} × {item.qty} ({item.unit})
                             </p>
                           </div>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-6 w-6"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              removeFromCart(item.id, item.unit);
-                            }}
-                          >
-                            <Trash2 className="h-3 w-3" />
-                          </Button>
+                          <div className="flex gap-1">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-6 w-6"
+                              onClick={() => openEditItem(item)}
+                            >
+                              <Settings className="h-3 w-3" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-6 w-6"
+                              onClick={() => removeFromCart(item.id, item.unit)}
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </Button>
+                          </div>
                         </div>
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-1">
@@ -719,10 +726,7 @@ function App() {
                               variant="outline"
                               size="icon"
                               className="h-7 w-7"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                updateQuantity(item.id, -1);
-                              }}
+                              onClick={() => updateQuantity(item.id, -1)}
                             >
                               <Minus className="h-3 w-3" />
                             </Button>
@@ -731,10 +735,7 @@ function App() {
                               variant="outline"
                               size="icon"
                               className="h-7 w-7"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                updateQuantity(item.id, 1);
-                              }}
+                              onClick={() => updateQuantity(item.id, 1)}
                             >
                               <Plus className="h-3 w-3" />
                             </Button>
