@@ -175,10 +175,11 @@ function App() {
       ))
     } else {
       console.log('Adding new item to cart')
+      const adjustedPrice = taxMode === "inclusive" ? basePrice * 1.15 : basePrice
       const newItem = {
         id: item.id,
         name: item.name,
-        price: parseFloat(basePrice),
+        price: parseFloat(adjustedPrice),
         qty: 1,
         unit: 'PCS',
         storedUnit: item.storedUnit || 'PCS',
@@ -274,7 +275,7 @@ function App() {
     setSelectedItemForUnit(item)
     setEditItemForm({
       unit: item.unit,
-      price: item.price / (taxMode === "inclusive" ? 1.15 : 1), // Convert back to base price
+      price: item.price, // Use the actual cart price (already tax-adjusted if needed)
       qty: item.qty
     })
     setShowUnitPopup(true)
@@ -834,14 +835,22 @@ function App() {
                 <div className="flex gap-2">
                   <Button
                     variant={editItemForm.unit === 'PCS' ? 'default' : 'outline'}
-                    onClick={() => setEditItemForm({...editItemForm, unit: 'PCS', price: selectedItemForUnit.price || selectedItemForUnit.rate || selectedItemForUnit.selling_price || 0})}
+                    onClick={() => {
+                      const basePrice = selectedItemForUnit.price || selectedItemForUnit.rate || selectedItemForUnit.selling_price || 0
+                      const adjustedPrice = taxMode === "inclusive" ? basePrice * 1.15 : basePrice
+                      setEditItemForm({...editItemForm, unit: 'PCS', price: adjustedPrice})
+                    }}
                     className="flex-1"
                   >
                     PCS
                   </Button>
                   <Button
                     variant={editItemForm.unit === 'CTN' ? 'default' : 'outline'}
-                    onClick={() => setEditItemForm({...editItemForm, unit: 'CTN', price: (selectedItemForUnit.price || selectedItemForUnit.rate || selectedItemForUnit.selling_price || 0) * 12})}
+                    onClick={() => {
+                      const basePrice = selectedItemForUnit.price || selectedItemForUnit.rate || selectedItemForUnit.selling_price || 0
+                      const adjustedPrice = taxMode === "inclusive" ? (basePrice * 12) * 1.15 : basePrice * 12
+                      setEditItemForm({...editItemForm, unit: 'CTN', price: adjustedPrice})
+                    }}
                     className="flex-1"
                   >
                     CTN
