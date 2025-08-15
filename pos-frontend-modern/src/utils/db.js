@@ -1,11 +1,12 @@
-import { openDB } from 'idb'
+import { openDB, deleteDB } from 'idb'
 
 const DB_NAME = 'TMR_POS_DB'
 const DB_VERSION = 2
 
 // Initialize IndexedDB
 export const initDB = async () => {
-  return openDB(DB_NAME, DB_VERSION, {
+  try {
+    return await openDB(DB_NAME, DB_VERSION, {
     upgrade(db, oldVersion, newVersion, transaction) {
       // Products store
       if (!db.objectStoreNames.contains('products')) {
@@ -51,7 +52,39 @@ export const initDB = async () => {
         db.createObjectStore('cart', { keyPath: 'id' })
       }
     }
-  })
+    })
+  } catch (error) {
+    console.error('IndexedDB initialization failed, clearing database:', error)
+    // Delete the entire database and try again
+    await deleteDB(DB_NAME)
+    return await openDB(DB_NAME, DB_VERSION, {
+      upgrade(db, oldVersion, newVersion, transaction) {
+        // Products store
+        const productStore = db.createObjectStore('products', { keyPath: 'id' })
+        productStore.createIndex('name', 'name')
+        productStore.createIndex('sku', 'sku')
+        productStore.createIndex('category', 'category_name')
+
+        // Customers store with correct keyPath
+        const customerStore = db.createObjectStore('customers', { keyPath: 'contact_id' })
+        customerStore.createIndex('name', 'contact_name')
+        customerStore.createIndex('email', 'email')
+
+        // Auth store
+        db.createObjectStore('auth', { keyPath: 'key' })
+
+        // Settings store
+        db.createObjectStore('settings', { keyPath: 'key' })
+
+        // Pending transactions
+        const transactionStore = db.createObjectStore('pendingTransactions', { keyPath: 'localId', autoIncrement: true })
+        transactionStore.createIndex('synced', 'synced')
+
+        // Cart store
+        db.createObjectStore('cart', { keyPath: 'id' })
+      }
+    })
+  }
 }
 
 // Products operations

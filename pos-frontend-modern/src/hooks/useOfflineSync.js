@@ -87,7 +87,16 @@ export function useOfflineSync(backendUrl) {
   // Sync customers with IndexedDB
   const syncCustomers = useCallback(async (forceRefresh = false) => {
     try {
-      const cachedCustomers = await db.getCustomers()
+      let cachedCustomers = []
+      
+      // Try to get cached customers, force refresh on error
+      try {
+        cachedCustomers = await db.getCustomers()
+      } catch (dbError) {
+        console.error('Failed to read customers from IndexedDB:', dbError)
+        forceRefresh = true // Force API fetch on DB error
+        cachedCustomers = []
+      }
       
       // Always force refresh if no customers are cached
       if (cachedCustomers.length === 0) {

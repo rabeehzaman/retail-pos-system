@@ -103,6 +103,18 @@ function AppMobile() {
   // Initialize app
   useEffect(() => {
     const initializeApp = async () => {
+      // Check database version and clear if needed
+      const dbVersion = localStorage.getItem('db_version')
+      if (dbVersion !== '2') {
+        console.log('Clearing old database schema...')
+        try {
+          await db.clearAllData() // Clear all IndexedDB data
+        } catch (err) {
+          console.error('Failed to clear old data:', err)
+        }
+        localStorage.setItem('db_version', '2')
+      }
+      
       // Initialize IndexedDB first and wait for it
       await db.initDB()
       
