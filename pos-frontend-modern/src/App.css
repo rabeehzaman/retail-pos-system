@@ -154,3 +154,114 @@
 .sparkle {
   animation: sparkle 1.5s ease-in-out infinite;
 }
+
+/* Custom button styles */
+.emerald-btn {
+  @apply bg-emerald-600 hover:bg-emerald-700 text-white;
+}
+
+/* Product card hover effects */
+.product-card {
+  @apply transition-all duration-200 hover:shadow-lg hover:scale-[1.02] hover:border-primary/20;
+}
+
+/* Glass morphism card effect */
+.glass-card {
+  @apply bg-white/50 dark:bg-gray-900/50 backdrop-blur-sm border-white/20;
+}
+
+/* Mobile-specific styles */
+@media (max-width: 768px) {
+  /* Prevent body scroll when modal is open */
+  body.modal-open {
+    overflow: hidden;
+    position: fixed;
+    width: 100%;
+  }
+
+  /* Touch-optimized buttons */
+  button {
+    min-height: 44px;
+    touch-action: manipulation;
+  }
+
+  /* Better tap targets for mobile */
+  .product-card {
+    @apply active:scale-[0.98];
+  }
+
+  /* Smooth scrolling */
+  .scroll-smooth {
+    scroll-behavior: smooth;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Remove hover effects on mobile */
+  @media (hover: none) {
+    .product-card:hover {
+      transform: none;
+      box-shadow: none;
+    }
+  }
+
+  /* Bottom navigation safe area */
+  .safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+
+/* Swipe animations */
+.swipe-delete {
+  animation: swipeDelete 0.3s ease-out forwards;
+}
+
+@keyframes swipeDelete {
+  to {
+    transform: translateX(-100%);
+    opacity: 0;
+  }
+}
+
+/* Pull to refresh indicator */
+.pull-to-refresh {
+  position: absolute;
+  top: -60px;
+  left: 50%;
+  transform: translateX(-50%);
+  transition: all 0.3s ease;
+}
+
+.pull-to-refresh.active {
+  top: 20px;
+}
+
+/* Mobile cart slide animation */
+.slide-up {
+  animation: slideUp 0.3s ease-out;
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+/* Prevent text selection on mobile */
+@media (max-width: 768px) {
+  * {
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+  }
+
+  input, textarea {
+    -webkit-user-select: text;
+    -moz-user-select: text;
+    -ms-user-select: text;
+    user-select: text;
+  }
+}
