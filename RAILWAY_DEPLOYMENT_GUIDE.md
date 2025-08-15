@@ -1,42 +1,4 @@
-# 🚀 TMR POS - Railway Deployment Guide
 
-Complete step-by-step guide for deploying TMR POS system to Railway.
-
-## 📋 Prerequisites
-
-- Railway account created
-- Git repository ready for deployment
-- Zoho API credentials (Client ID, Client Secret, Organization ID)
-
----
-
-## 🔧 Phase 1: Railway Project Setup
-
-### 1. Create Railway Project
-```bash
-# Connect to Railway
-railway login
-
-# Create new project
-railway new tmr-pos-system
-cd tmr-pos-system
-```
-
-### 2. Deploy Backend Service
-```bash
-# Add backend as service
-railway add
-
-# Deploy from retail-pos-backend folder
-railway up --service backend
-```
-
-### 3. Get Railway URLs
-After deployment, Railway will provide:
-- **Backend URL:** `https://your-backend.up.railway.app`
-- **Frontend URL:** `https://your-frontend.up.railway.app` (after frontend deployment)
-
----
 
 ## ⚙️ Phase 2: Environment Variables Setup
 

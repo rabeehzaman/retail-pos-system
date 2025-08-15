@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useMemo } from 'react'
-import { Search, ShoppingCart, Menu, Moon, Sun, RefreshCw, LogOut, Grid3x3, List, Plus, Minus, Trash2, Package, Users, CreditCard, TrendingUp, AlertCircle, Check, Settings, Filter, X } from 'lucide-react'
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
+import { Search, ShoppingCart, Menu, Moon, Sun, RefreshCw, LogOut, Grid3x3, List, Plus, Minus, Trash2, Package, Users, CreditCard, TrendingUp, AlertCircle, Check, Settings, Filter, X, WifiOff, Wifi } from 'lucide-react'
 import axios from 'axios'
 import { Button } from './components/ui/button'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from './components/ui/card'
@@ -8,8 +8,13 @@ import { Badge } from './components/ui/badge'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from './components/ui/dialog'
 import { cn } from './lib/utils'
 import { MobileNavigation } from './components/MobileNavigation'
-import { ProductGrid } from './components/ProductGrid'
+import { VirtualProductGrid } from './components/VirtualProductGrid'
 import { MobileCart } from './components/MobileCart'
+import { useAutoAuth } from './hooks/useAutoAuth'
+import { useOfflineSync } from './hooks/useOfflineSync'
+import * as localStorage from './utils/localStorage'
+import * as db from './utils/db'
+import { registerServiceWorker } from './utils/offline'
 import './App.css'
 
 const TAX_RATE = 0.15
@@ -62,109 +67,149 @@ function formatCurrency(n) {
 }
 
 function AppMobile() {
-  const [dark, setDark] = useState(false)
+  // Load saved preferences
+  const [dark, setDark] = useState(() => localStorage.getTheme())
   const [search, setSearch] = useState("")
   const [category, setCategory] = useState("All")
   const [activeTab, setActiveTab] = useState("products")
   const [cart, setCart] = useState([])
-  const [viewMode, setViewMode] = useState("grid")
-  const [taxMode, setTaxMode] = useState("exclusive")
+  const [viewMode, setViewMode] = useState(() => localStorage.getViewMode())
+  const [taxMode, setTaxMode] = useState(() => localStorage.getTaxMode())
   const [showSearch, setShowSearch] = useState(false)
   const [showFilters, setShowFilters] = useState(false)
   const [isMobile, setIsMobile] = useState(false)
-  
-  // Zoho integration states
-  const [authStatus, setAuthStatus] = useState({ authenticated: false })
-  const [items, setItems] = useState([])
-  const [customers, setCustomers] = useState([])
   const [selectedCustomer, setSelectedCustomer] = useState(null)
-  const [loading, setLoading] = useState(false)
-  const [syncStatus, setSyncStatus] = useState("")
   const [lastInvoice, setLastInvoice] = useState(null)
   const [showCheckoutDialog, setShowCheckoutDialog] = useState(false)
   const [showSettingsDialog, setShowSettingsDialog] = useState(false)
+  const [items, setItems] = useState([])
+  const [customers, setCustomers] = useState([])
+  const gridContainerRef = useRef(null)
+  const [containerDimensions, setContainerDimensions] = useState({ width: 0, height: 0 })
+  
+  // Use performance optimization hooks
+  const { authStatus, authError, login, logout, checkStoredAuth } = useAutoAuth(BACKEND_URL)
+  const { 
+    isOffline, 
+    syncStatus, 
+    lastSyncTime, 
+    pendingChanges,
+    syncProducts, 
+    syncCustomers, 
+    saveTransaction, 
+    syncData 
+  } = useOfflineSync(BACKEND_URL)
 
-  // Check if mobile
+  // Initialize app
+  useEffect(() => {
+    // Initialize IndexedDB
+    db.initDB()
+    
+    // Register service worker for PWA
+    registerServiceWorker()
+    
+    // Load saved cart from IndexedDB
+    db.getCart().then(savedCart => {
+      if (savedCart && savedCart.length > 0) {
+        setCart(savedCart)
+      }
+    })
+    
+    // Load last customer
+    const lastCustomer = localStorage.getLastCustomer()
+    if (lastCustomer) {
+      setSelectedCustomer(lastCustomer.contact_id)
+    }
+  }, [])
+  
+  // Check if mobile and measure container
   useEffect(() => {
     const checkMobile = () => {
       setIsMobile(window.innerWidth < 768)
+      
+      if (gridContainerRef.current) {
+        const rect = gridContainerRef.current.getBoundingClientRect()
+        setContainerDimensions({
+          width: rect.width || window.innerWidth,
+          height: rect.height || window.innerHeight - 200
+        })
+      }
     }
     checkMobile()
     window.addEventListener('resize', checkMobile)
     return () => window.removeEventListener('resize', checkMobile)
   }, [])
 
-  // Apply dark mode
+  // Apply and save dark mode
   useEffect(() => {
     if (dark) {
       document.documentElement.classList.add('dark')
     } else {
       document.documentElement.classList.remove('dark')
     }
+    localStorage.saveTheme(dark)
   }, [dark])
-
-  // Check auth status on mount
+  
+  // Save preferences when they change
   useEffect(() => {
-    checkAuthStatus()
-  }, [])
-
-  const checkAuthStatus = async () => {
-    try {
-      const response = await axios.get(`${BACKEND_URL}/auth/status`)
-      setAuthStatus(response.data)
-      if (response.data.authenticated) {
-        fetchItems()
-        fetchCustomers()
-      }
-    } catch (error) {
-      console.error('Failed to check auth status:', error)
+    localStorage.saveViewMode(viewMode)
+  }, [viewMode])
+  
+  useEffect(() => {
+    localStorage.saveTaxMode(taxMode)
+  }, [taxMode])
+  
+  // Save cart to IndexedDB when it changes
+  useEffect(() => {
+    if (cart.length > 0) {
+      db.saveCart(cart)
+    } else {
+      db.clearCart()
     }
-  }
+  }, [cart])
+  
+  // Save selected customer
+  useEffect(() => {
+    if (selectedCustomer) {
+      const customer = customers.find(c => c.contact_id === selectedCustomer)
+      if (customer) {
+        localStorage.saveLastCustomer(customer)
+      }
+    }
+  }, [selectedCustomer, customers])
 
-  const handleLogin = () => {
-    window.open(`${BACKEND_URL}/auth/login`, '_blank', 'width=600,height=700')
+  // Load data when authenticated
+  useEffect(() => {
+    if (authStatus.authenticated) {
+      loadData()
+    }
+  }, [authStatus.authenticated])
+  
+  const loadData = useCallback(async () => {
+    // Load products (from cache or API)
+    const products = await syncProducts()
+    setItems(products || [])
     
-    const checkAuth = setInterval(async () => {
-      try {
-        const response = await axios.get(`${BACKEND_URL}/auth/status`)
-        if (response.data.authenticated) {
-          setAuthStatus(response.data)
-          clearInterval(checkAuth)
-          fetchItems()
-          fetchCustomers()
-        }
-      } catch (error) {
-        console.error('Auth check failed:', error)
-      }
-    }, 2000)
-
-    setTimeout(() => clearInterval(checkAuth), 60000)
-  }
-
-  const fetchItems = async () => {
-    setLoading(true)
-    setSyncStatus("Syncing products...")
-    try {
-      const response = await axios.get(`${BACKEND_URL}/api/items`)
-      setItems(response.data.items || [])
-      setSyncStatus(`Synced ${response.data.items?.length || 0} products`)
-      setTimeout(() => setSyncStatus(""), 3000)
-    } catch (error) {
-      console.error('Failed to fetch items:', error)
-      setSyncStatus("Sync failed")
-    } finally {
-      setLoading(false)
+    // Load customers (from cache or API)
+    const customerList = await syncCustomers()
+    setCustomers(customerList || [])
+  }, [syncProducts, syncCustomers])
+  
+  const handleLogin = useCallback(async () => {
+    const success = await login()
+    if (success) {
+      loadData()
     }
-  }
-
-  const fetchCustomers = async () => {
-    try {
-      const response = await axios.get(`${BACKEND_URL}/api/customers`)
-      setCustomers(response.data.customers || [])
-    } catch (error) {
-      console.error('Failed to fetch customers:', error)
-    }
-  }
+  }, [login, loadData])
+  
+  const handleLogout = useCallback(async () => {
+    await logout()
+    setItems([])
+    setCustomers([])
+    setCart([])
+    setSelectedCustomer(null)
+    await db.clearAll()
+  }, [logout])
 
   const categories = useMemo(() => {
     const cats = new Set(["All"])
@@ -235,19 +280,32 @@ function AppMobile() {
 
       const subtotal = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0)
       
-      const response = await axios.post(`${BACKEND_URL}/api/invoices`, {
+      const transaction = {
         customer_id: selectedCustomer,
         line_items: lineItems,
         is_inclusive_tax: taxMode === "inclusive"
-      })
-
-      setLastInvoice(response.data)
+      }
+      
+      // Use offline-capable save transaction
+      const result = await saveTransaction(transaction)
+      
+      if (result.pending) {
+        // Transaction saved offline
+        setLastInvoice({
+          invoice_number: `PENDING-${result.localId}`,
+          total: subtotal * (taxMode === "inclusive" ? 1 : 1.15),
+          pending: true
+        })
+      } else {
+        setLastInvoice(result)
+      }
+      
       clearCart()
       setShowCheckoutDialog(false)
       setActiveTab('products')
     } catch (error) {
       console.error('Checkout failed:', error)
-      alert('Checkout failed. Please try again.')
+      alert(isOffline ? 'Transaction saved offline. Will sync when connection is restored.' : 'Checkout failed. Please try again.')
       setShowCheckoutDialog(false)
     }
   }
@@ -283,13 +341,12 @@ function AppMobile() {
                     size="icon"
                     onClick={() => {
                       if (authStatus.authenticated) {
-                        fetchItems()
-                        fetchCustomers()
+                        syncData()
                       }
                     }}
-                    disabled={loading || !authStatus.authenticated}
+                    disabled={syncStatus === 'syncing' || !authStatus.authenticated}
                   >
-                    <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
+                    <RefreshCw className={cn("h-4 w-4", syncStatus === 'syncing' && "animate-spin")} />
                   </Button>
                 </div>
 
@@ -309,11 +366,27 @@ function AppMobile() {
                   </div>
                 )}
 
-                {syncStatus && (
-                  <div className="mt-2">
-                    <Badge variant="outline" className="text-xs">{syncStatus}</Badge>
-                  </div>
-                )}
+                <div className="mt-2 flex items-center gap-2">
+                  {isOffline ? (
+                    <Badge variant="destructive" className="text-xs">
+                      <WifiOff className="h-3 w-3 mr-1" />
+                      Offline Mode
+                    </Badge>
+                  ) : (
+                    <Badge variant="success" className="text-xs">
+                      <Wifi className="h-3 w-3 mr-1" />
+                      Online
+                    </Badge>
+                  )}
+                  {pendingChanges > 0 && (
+                    <Badge variant="warning" className="text-xs">
+                      {pendingChanges} pending
+                    </Badge>
+                  )}
+                  {syncStatus === 'syncing' && (
+                    <Badge variant="outline" className="text-xs">Syncing...</Badge>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -333,14 +406,17 @@ function AppMobile() {
                   </Card>
                 </div>
               ) : (
-                <div className="py-4">
-                  <ProductGrid
+                <div className="py-4" ref={gridContainerRef}>
+                  <VirtualProductGrid
                     items={filteredItems}
                     onAddToCart={addToCart}
                     formatCurrency={formatCurrency}
                     taxMode={taxMode}
                     viewMode={viewMode}
                     isMobile={true}
+                    isLoading={syncStatus === 'syncing' && items.length === 0}
+                    containerHeight={containerDimensions.height || 600}
+                    containerWidth={containerDimensions.width || window.innerWidth}
                   />
                 </div>
               )}
@@ -469,11 +545,7 @@ function AppMobile() {
                     <Button
                       variant="outline"
                       className="w-full"
-                      onClick={() => {
-                        setAuthStatus({ authenticated: false })
-                        setItems([])
-                        setCustomers([])
-                      }}
+                      onClick={handleLogout}
                     >
                       <LogOut className="mr-2 h-4 w-4" />
                       Disconnect
@@ -495,6 +567,27 @@ function AppMobile() {
                 <CardContent>
                   <p className="text-sm">Invoice #{lastInvoice.invoice_number}</p>
                   <p className="text-xs text-muted-foreground">Total: {formatCurrency(lastInvoice.total)}</p>
+                  {lastInvoice.pending && (
+                    <Badge variant="warning" className="mt-2 text-xs">
+                      Pending Sync
+                    </Badge>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+            
+            {lastSyncTime && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">Sync Status</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-sm">Last synced: {new Date(lastSyncTime).toLocaleTimeString()}</p>
+                  {pendingChanges > 0 && (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {pendingChanges} transactions pending
+                    </p>
+                  )}
                 </CardContent>
               </Card>
             )}
