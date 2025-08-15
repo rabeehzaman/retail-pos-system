@@ -1,5 +1,5 @@
 import React from 'react'
-import { Plus, Package } from 'lucide-react'
+import { Plus, Package, Loader2 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
 import { Button } from './ui/button'
 import { Badge } from './ui/badge'
@@ -11,8 +11,21 @@ export function ProductGrid({
   formatCurrency, 
   taxMode,
   viewMode = 'grid',
-  isMobile = false 
+  isMobile = false,
+  isLoading = false 
 }) {
+  if (isLoading) {
+    return (
+      <Card className="glass-card">
+        <CardContent className="flex flex-col items-center justify-center py-12">
+          <Loader2 className="h-12 w-12 text-muted-foreground mb-4 animate-spin" />
+          <p className="text-lg font-medium">Loading products...</p>
+          <p className="text-sm text-muted-foreground">Please wait while we fetch your inventory</p>
+        </CardContent>
+      </Card>
+    )
+  }
+
   if (items.length === 0) {
     return (
       <Card className="glass-card">
@@ -31,7 +44,7 @@ export function ProductGrid({
         {items.map(item => (
           <button
             key={item.id}
-            className="w-full flex items-center justify-between p-4 bg-card border rounded-lg active:scale-[0.98] transition-all"
+            className="w-full flex items-center justify-between p-4 bg-card border rounded-lg active:scale-[0.98] transition-all touch-manipulation hover:bg-accent/50"
             onClick={() => onAddToCart(item)}
           >
             <div className="flex items-center flex-1 text-left">
@@ -80,7 +93,7 @@ export function ProductGrid({
       {items.map(item => (
         <Card 
           key={item.id} 
-          className="product-card cursor-pointer active:scale-[0.98] transition-transform"
+          className="product-card cursor-pointer active:scale-[0.98] transition-transform touch-manipulation hover:shadow-lg"
           onClick={() => onAddToCart(item)}
         >
           <CardHeader className="pb-3 p-3">
@@ -112,8 +125,12 @@ export function ProductGrid({
               </div>
               <Button 
                 size="sm" 
-                className="w-full h-10" 
+                className="w-full h-10 touch-manipulation" 
                 variant="default"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onAddToCart(item);
+                }}
               >
                 <Plus className="h-4 w-4 mr-1" />
                 Add
