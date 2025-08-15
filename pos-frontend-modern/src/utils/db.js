@@ -1,7 +1,7 @@
 import { openDB } from 'idb'
 
 const DB_NAME = 'TMR_POS_DB'
-const DB_VERSION = 1
+const DB_VERSION = 2
 
 // Initialize IndexedDB
 export const initDB = async () => {
@@ -15,10 +15,15 @@ export const initDB = async () => {
         productStore.createIndex('category', 'category_name')
       }
 
-      // Customers store
-      if (!db.objectStoreNames.contains('customers')) {
-        const customerStore = db.createObjectStore('customers', { keyPath: 'id' })
-        customerStore.createIndex('name', 'display_name')
+      // Customers store - handle migration from v1 to v2
+      if (oldVersion < 2) {
+        // Delete old store if it exists with wrong keyPath
+        if (db.objectStoreNames.contains('customers')) {
+          db.deleteObjectStore('customers')
+        }
+        // Create new store with correct keyPath
+        const customerStore = db.createObjectStore('customers', { keyPath: 'contact_id' })
+        customerStore.createIndex('name', 'contact_name')
         customerStore.createIndex('email', 'email')
       }
 
