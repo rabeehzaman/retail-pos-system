@@ -208,7 +208,7 @@ function AppMobile() {
     setCustomers([])
     setCart([])
     setSelectedCustomer(null)
-    await db.clearAll()
+    await db.clearAllData()
   }, [logout])
 
   const categories = useMemo(() => {
