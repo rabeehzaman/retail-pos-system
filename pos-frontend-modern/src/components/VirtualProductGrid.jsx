@@ -1,5 +1,5 @@
 import React, { memo, useState, useEffect } from 'react'
-import { FixedSizeGrid as Grid } from 'react-window'
+import { FixedSizeGrid as Grid, FixedSizeList as List } from 'react-window'
 import { Plus, Package } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
 import { Button } from './ui/button'
@@ -280,8 +280,6 @@ const ListItem = memo(({ index, style, data }) => {
 ListItem.displayName = 'ListItem'
 
 function VirtualList({ items, onAddToCart, formatCurrency, taxMode, height, width }) {
-  const List = require('react-window').FixedSizeList
-
   return (
     <List
       height={height}
