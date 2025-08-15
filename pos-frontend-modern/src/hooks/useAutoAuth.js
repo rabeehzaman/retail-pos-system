@@ -15,11 +15,16 @@ export function useAutoAuth(backendUrl) {
   // Check stored auth on mount
   useEffect(() => {
     checkStoredAuth()
-  }, [])
+  }, [checkStoredAuth])
 
   // Check if we have valid stored authentication
   const checkStoredAuth = useCallback(async () => {
     try {
+      // Small delay for mobile devices to ensure IndexedDB is ready
+      if (window.innerWidth < 768) {
+        await new Promise(resolve => setTimeout(resolve, 100))
+      }
+      
       // First check localStorage for quick status
       const storedStatus = localStorage.getAuthStatus()
       

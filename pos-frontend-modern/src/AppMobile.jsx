@@ -102,25 +102,32 @@ function AppMobile() {
 
   // Initialize app
   useEffect(() => {
-    // Initialize IndexedDB
-    db.initDB()
-    
-    // Register service worker for PWA
-    registerServiceWorker()
-    
-    // Load saved cart from IndexedDB
-    db.getCart().then(savedCart => {
+    const initializeApp = async () => {
+      // Initialize IndexedDB first and wait for it
+      await db.initDB()
+      
+      // Register service worker for PWA
+      registerServiceWorker()
+      
+      // Load saved cart from IndexedDB
+      const savedCart = await db.getCart()
       if (savedCart && savedCart.length > 0) {
         setCart(savedCart)
       }
-    })
-    
-    // Load last customer
-    const lastCustomer = localStorage.getLastCustomer()
-    if (lastCustomer) {
-      setSelectedCustomer(lastCustomer.contact_id)
+      
+      // Load last customer
+      const lastCustomer = localStorage.getLastCustomer()
+      if (lastCustomer) {
+        setSelectedCustomer(lastCustomer.contact_id)
+      }
+      
+      // Now that IndexedDB is ready, check stored auth
+      // This ensures auth tokens can be retrieved properly
+      await checkStoredAuth()
     }
-  }, [])
+    
+    initializeApp()
+  }, [checkStoredAuth])
   
   // Check if mobile and measure container
   useEffect(() => {
