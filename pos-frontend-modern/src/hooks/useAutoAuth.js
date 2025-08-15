@@ -12,11 +12,6 @@ export function useAutoAuth(backendUrl) {
   })
   const [authError, setAuthError] = useState(null)
 
-  // Check stored auth on mount
-  useEffect(() => {
-    checkStoredAuth()
-  }, [checkStoredAuth])
-
   // Check if we have valid stored authentication
   const checkStoredAuth = useCallback(async () => {
     try {
@@ -87,6 +82,11 @@ export function useAutoAuth(backendUrl) {
       return false
     }
   }, [backendUrl])
+
+  // Check stored auth on mount
+  useEffect(() => {
+    checkStoredAuth()
+  }, [checkStoredAuth])
 
   // Refresh authentication using refresh token
   const refreshAuth = useCallback(async (refreshToken) => {
