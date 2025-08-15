@@ -21,11 +21,11 @@ export function CustomerSearch({
 
     if (searchTerm) {
       filtered = customers.filter(customer => 
-        customer.display_name.toLowerCase().includes(searchTerm.toLowerCase())
+        (customer.contact_name || customer.display_name || '').toLowerCase().includes(searchTerm.toLowerCase())
       )
     } else if (selectedLetter) {
       filtered = customers.filter(customer => 
-        customer.display_name.toUpperCase().startsWith(selectedLetter)
+        (customer.contact_name || customer.display_name || '').toUpperCase().startsWith(selectedLetter)
       )
     }
 
@@ -39,7 +39,7 @@ export function CustomerSearch({
   const availableLetters = useMemo(() => {
     const letters = new Set()
     customers.forEach(customer => {
-      const firstLetter = customer.display_name[0]?.toUpperCase()
+      const firstLetter = (customer.contact_name || customer.display_name)?.[0]?.toUpperCase()
       if (firstLetter && alphabet.includes(firstLetter)) {
         letters.add(firstLetter)
       }
@@ -121,7 +121,7 @@ export function CustomerSearch({
           <div className="mt-3 p-2 bg-primary/10 rounded-lg flex items-center justify-between">
             <span className="text-sm font-medium flex items-center gap-2">
               <Check className="h-4 w-4 text-primary" />
-              {selectedCustomer.display_name}
+              {selectedCustomer.contact_name || selectedCustomer.display_name}
             </span>
             <Button
               size="sm"
@@ -150,12 +150,12 @@ export function CustomerSearch({
           <div className="p-2">
             {filteredCustomers.map(customer => (
               <button
-                key={customer.id}
+                key={customer.contact_id || customer.id}
                 onClick={() => handleSelectCustomer(customer)}
                 className={cn(
                   "w-full p-3 text-left rounded-lg transition-colors mb-1",
                   "hover:bg-accent active:scale-[0.98] touch-manipulation",
-                  selectedCustomer?.id === customer.id
+                  selectedCustomer?.contact_id === customer.contact_id || selectedCustomer?.id === customer.id
                     ? "bg-primary/10 border border-primary/20"
                     : "bg-card border border-border"
                 )}
@@ -163,7 +163,7 @@ export function CustomerSearch({
                 <div className="flex items-center justify-between">
                   <div className="flex-1 min-w-0">
                     <p className="font-medium text-sm truncate">
-                      {customer.display_name}
+                      {customer.contact_name || customer.display_name}
                     </p>
                     {customer.email && (
                       <p className="text-xs text-muted-foreground truncate">
@@ -171,7 +171,7 @@ export function CustomerSearch({
                       </p>
                     )}
                   </div>
-                  {selectedCustomer?.id === customer.id && (
+                  {(selectedCustomer?.contact_id === customer.contact_id || selectedCustomer?.id === customer.id) && (
                     <Check className="h-4 w-4 text-primary shrink-0 ml-2" />
                   )}
                 </div>
