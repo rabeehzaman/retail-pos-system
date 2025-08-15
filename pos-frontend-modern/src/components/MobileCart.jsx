@@ -184,7 +184,7 @@ export function MobileCart({
         </div>
       </div>
 
-      <div className="border-t bg-background p-4 space-y-3 pb-20 md:pb-4">
+      <div className="border-t bg-background p-4 space-y-3 pb-16 md:pb-4">
         <div className="space-y-2">
           <div className="flex justify-between text-sm">
             <span>Subtotal</span>

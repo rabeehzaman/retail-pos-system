@@ -398,7 +398,7 @@ function AppMobile() {
             </div>
 
             {/* Products Grid */}
-            <div className="flex-1 overflow-y-auto pb-20">
+            <div className="flex-1 overflow-y-auto pb-16">
               {!authStatus.authenticated ? (
                 <div className="p-4">
                   <Card className="glass-card">
@@ -450,8 +450,9 @@ function AppMobile() {
 
       case 'customers':
         return (
-          <div className="p-4">
-            <h2 className="text-lg font-semibold mb-4">Select Customer</h2>
+          <div className="flex-1 overflow-y-auto pb-16">
+            <div className="p-4">
+              <h2 className="text-lg font-semibold mb-4">Select Customer</h2>
             <select
               value={selectedCustomer || ""}
               onChange={(e) => setSelectedCustomer(e.target.value)}
@@ -474,13 +475,15 @@ function AppMobile() {
                 </CardContent>
               </Card>
             )}
+            </div>
           </div>
         )
 
       case 'settings':
         return (
-          <div className="p-4 space-y-4">
-            <h2 className="text-lg font-semibold mb-4">Settings</h2>
+          <div className="flex-1 overflow-y-auto pb-16">
+            <div className="p-4 space-y-4">
+              <h2 className="text-lg font-semibold mb-4">Settings</h2>
             
             <Card>
               <CardHeader>
@@ -598,6 +601,7 @@ function AppMobile() {
                 </CardContent>
               </Card>
             )}
+            </div>
           </div>
         )
 

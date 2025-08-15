@@ -89,23 +89,30 @@ export function useOfflineSync(backendUrl) {
     try {
       const cachedCustomers = await db.getCustomers()
       
+      // Always force refresh if no customers are cached
+      if (cachedCustomers.length === 0) {
+        forceRefresh = true
+      }
+      
       if (!forceRefresh && (isOffline || (cachedCustomers.length > 0 && 
           lastSyncTime && Date.now() - lastSyncTime < 3600000))) {
         return cachedCustomers
       }
 
       if (isOnline() && shouldSync()) {
+        setSyncStatus('syncing')
         const response = await retryWithBackoff(async () => {
           return await axios.get(`${backendUrl}/api/customers`)
-        })
+        }, 3, 1000) // 3 retries with 1 second initial delay
 
         if (response.data.customers) {
           await db.saveCustomers(response.data.customers)
+          setSyncStatus('synced')
           return response.data.customers
         }
       }
 
-      return cachedCustomers
+      return cachedCustomers || []
     } catch (error) {
       console.error('Customer sync failed:', error)
       const cachedCustomers = await db.getCustomers()
