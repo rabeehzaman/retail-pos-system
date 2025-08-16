@@ -1,17 +1,42 @@
 import React, { memo, useState, useEffect } from 'react'
 import { FixedSizeGrid as Grid, FixedSizeList as List } from 'react-window'
-import { Plus, Package } from 'lucide-react'
+import { Plus, Package, TrendingUp } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
 import { Button } from './ui/button'
 import { Badge } from './ui/badge'
 import { cn } from '../lib/utils'
 import { canHandleLargeLists, getOptimalBatchSize } from '../utils/deviceDetection'
 
+// Loading skeleton component
+const ProductSkeleton = () => (
+  <Card className="h-full animate-pulse">
+    <CardHeader className="pb-3 p-3">
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex-1 space-y-2">
+          <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-3/4"></div>
+          <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded w-1/2"></div>
+        </div>
+        <div className="h-6 w-12 bg-gray-200 dark:bg-gray-700 rounded"></div>
+      </div>
+    </CardHeader>
+    <CardContent className="pt-0 p-3">
+      <div className="space-y-2">
+        <div className="text-center space-y-1">
+          <div className="h-6 bg-gray-200 dark:bg-gray-700 rounded w-20 mx-auto"></div>
+          <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded w-16 mx-auto"></div>
+        </div>
+        <div className="h-10 bg-gray-200 dark:bg-gray-700 rounded"></div>
+      </div>
+    </CardContent>
+  </Card>
+)
+
 // Memoized product card to prevent unnecessary re-renders
 const ProductCard = memo(({ data, columnIndex, rowIndex, style }) => {
-  const { items, columnCount, onAddToCart, formatCurrency, taxMode } = data
+  const { items, columnCount, onAddToCart, formatCurrency, taxMode, onProductSales, selectedIndex } = data
   const index = rowIndex * columnCount + columnIndex
   const item = items[index]
+  const isSelected = index === selectedIndex
 
   if (!item) return <div style={style} />
 
@@ -20,14 +45,17 @@ const ProductCard = memo(({ data, columnIndex, rowIndex, style }) => {
     : (item.price || item.rate || item.selling_price || 0)
 
   return (
-    <div style={style} className="p-2">
+    <div style={style} className="p-1.5">
       <Card 
-        className="h-full product-card cursor-pointer active:scale-[0.98] transition-transform touch-manipulation hover:shadow-lg"
+        className={cn(
+          "h-full product-card cursor-pointer active:scale-[0.98] transition-all touch-manipulation hover:shadow-lg flex flex-col",
+          isSelected && "ring-2 ring-primary shadow-lg scale-105"
+        )}
         onClick={() => onAddToCart(item)}
       >
-        <CardHeader className="pb-3 p-3">
+        <CardHeader className="pb-2 p-3 flex-shrink-0">
           <div className="flex items-start justify-between gap-2">
-            <CardTitle className="text-sm font-medium line-clamp-2 flex-1">
+            <CardTitle className="text-sm font-medium line-clamp-2 flex-1 leading-tight">
               {item.name}
             </CardTitle>
             {item.stock_on_hand !== undefined && (
@@ -40,27 +68,41 @@ const ProductCard = memo(({ data, columnIndex, rowIndex, style }) => {
             )}
           </div>
         </CardHeader>
-        <CardContent className="pt-0 p-3">
-          <div className="space-y-2">
-            <div className="text-center">
-              <div className="text-xl font-bold text-primary">
-                {formatCurrency(price)}
-              </div>
-              <div className="text-xs text-muted-foreground">per PCS</div>
+        <CardContent className="pt-0 p-3 flex-1 flex flex-col justify-between">
+          <div className="text-center mb-3">
+            <div className="text-lg font-bold text-primary leading-tight">
+              {formatCurrency(price)}
             </div>
-            <Button 
-              size="sm" 
-              className="w-full h-10 touch-manipulation" 
-              variant="default"
-              onClick={(e) => {
-                e.stopPropagation();
-                onAddToCart(item);
-              }}
-            >
-              <Plus className="h-4 w-4 mr-1" />
-              Add
-            </Button>
+            <div className="text-xs text-muted-foreground">per PCS</div>
           </div>
+          <div className="flex gap-1 mt-auto">
+              {onProductSales && (
+                <Button 
+                  size="sm" 
+                  variant="ghost" 
+                  className="h-8 flex-1 px-2"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onProductSales(item);
+                  }}
+                  title="View Sales History"
+                >
+                  <TrendingUp className="h-3.5 w-3.5" />
+                </Button>
+              )}
+              <Button 
+                size="sm" 
+                className={`h-8 touch-manipulation text-xs ${onProductSales ? 'flex-2' : 'w-full'}`}
+                variant="default"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onAddToCart(item);
+                }}
+              >
+                <Plus className="h-3.5 w-3.5 mr-1" />
+                Add
+              </Button>
+            </div>
         </CardContent>
       </Card>
     </div>
@@ -78,7 +120,9 @@ export function VirtualProductGrid({
   isMobile = false,
   isLoading = false,
   containerHeight = 600,
-  containerWidth = null
+  containerWidth = null,
+  onProductSales = null,
+  selectedIndex = -1
 }) {
   // Check if device can handle large lists
   const [currentPage, setCurrentPage] = useState(1)
@@ -95,15 +139,22 @@ export function VirtualProductGrid({
   const actualWidth = containerWidth || window.innerWidth
   const actualHeight = containerHeight || 600
   
-  const columnCount = isMobile ? 2 : 
-    actualWidth < 640 ? 2 :
-    actualWidth < 768 ? 3 :
-    actualWidth < 1024 ? 4 :
-    actualWidth < 1280 ? 5 :
-    actualWidth < 1536 ? 6 : 8
+  // Better responsive grid with min/max card sizes
+  const minCardWidth = 150
+  const maxCardWidth = 250
+  const idealCardWidth = 200
+  
+  const columnCount = isMobile ? 2 : Math.max(
+    2, 
+    Math.min(
+      8, // Max 8 columns
+      Math.floor(actualWidth / minCardWidth)
+    )
+  )
 
-  const columnWidth = actualWidth / columnCount
-  const rowHeight = isMobile ? 250 : 280
+  const columnWidth = Math.max(minCardWidth, Math.min(maxCardWidth, actualWidth / columnCount))
+  // More compact aspect ratio - reduce height significantly
+  const rowHeight = isMobile ? Math.ceil(columnWidth * 1.2) : Math.ceil(columnWidth * 0.95)
   const rowCount = Math.ceil(displayItems.length / columnCount)
   
   // Prevent rendering if dimensions are invalid
@@ -119,14 +170,19 @@ export function VirtualProductGrid({
   }
 
   if (isLoading) {
+    // Show skeleton grid while loading
+    const skeletonCount = Math.min(12, Math.floor((actualHeight / rowHeight) * columnCount))
     return (
-      <Card className="glass-card">
-        <CardContent className="flex flex-col items-center justify-center py-12">
-          <div className="h-12 w-12 border-4 border-primary border-t-transparent rounded-full animate-spin mb-4" />
-          <p className="text-lg font-medium">Loading products...</p>
-          <p className="text-sm text-muted-foreground">Please wait while we fetch your inventory</p>
-        </CardContent>
-      </Card>
+      <div className={cn(
+        "grid gap-3 px-4 md:px-0",
+        isMobile 
+          ? "grid-cols-2" 
+          : "grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-8"
+      )}>
+        {Array.from({ length: skeletonCount }).map((_, index) => (
+          <ProductSkeleton key={index} />
+        ))}
+      </div>
     )
   }
 
@@ -153,6 +209,7 @@ export function VirtualProductGrid({
           taxMode={taxMode}
           height={shouldPaginate ? actualHeight - 60 : actualHeight}
           width={actualWidth}
+          onProductSales={onProductSales}
         />
         {shouldPaginate && (
           <div className="flex items-center justify-between p-4 border-t">
@@ -197,7 +254,9 @@ export function VirtualProductGrid({
           columnCount,
           onAddToCart,
           formatCurrency,
-          taxMode
+          taxMode,
+          onProductSales,
+          selectedIndex
         }}
       >
         {ProductCard}
@@ -231,7 +290,7 @@ export function VirtualProductGrid({
 
 // Virtual list component for list view
 const ListItem = memo(({ index, style, data }) => {
-  const { items, onAddToCart, formatCurrency, taxMode } = data
+  const { items, onAddToCart, formatCurrency, taxMode, onProductSales } = data
   const item = items[index]
 
   if (!item) return <div style={style} />
@@ -254,6 +313,20 @@ const ListItem = memo(({ index, style, data }) => {
         </div>
         
         <div className="flex items-center gap-3 shrink-0">
+          {onProductSales && (
+            <Button 
+              size="icon" 
+              variant="ghost" 
+              className="h-7 w-7"
+              onClick={(e) => {
+                e.stopPropagation();
+                onProductSales(item);
+              }}
+              title="View Sales History"
+            >
+              <TrendingUp className="h-3 w-3" />
+            </Button>
+          )}
           {item.stock_on_hand && (
             <Badge 
               variant={item.stock_on_hand > 10 ? "success" : "warning"} 
@@ -279,7 +352,7 @@ const ListItem = memo(({ index, style, data }) => {
 
 ListItem.displayName = 'ListItem'
 
-function VirtualList({ items, onAddToCart, formatCurrency, taxMode, height, width }) {
+function VirtualList({ items, onAddToCart, formatCurrency, taxMode, height, width, onProductSales }) {
   return (
     <List
       height={height}
@@ -290,7 +363,8 @@ function VirtualList({ items, onAddToCart, formatCurrency, taxMode, height, widt
         items,
         onAddToCart,
         formatCurrency,
-        taxMode
+        taxMode,
+        onProductSales
       }}
     >
       {ListItem}

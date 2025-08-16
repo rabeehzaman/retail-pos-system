@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useMemo } from 'react'
-import { Search, ShoppingCart, Menu, Moon, Sun, RefreshCw, LogOut, Grid3x3, List, Plus, Minus, Trash2, Package, Users, CreditCard, TrendingUp, AlertCircle, Check, Settings } from 'lucide-react'
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
+import { Search, ShoppingCart, Menu, Moon, Sun, RefreshCw, LogOut, Grid3x3, List, Plus, Minus, Trash2, Package, Users, CreditCard, TrendingUp, AlertCircle, Check, Settings, WifiOff, Wifi } from 'lucide-react'
 import axios from 'axios'
 import { Button } from './components/ui/button'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from './components/ui/card'
@@ -8,6 +8,11 @@ import { Badge } from './components/ui/badge'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from './components/ui/dialog'
 import { cn } from './lib/utils'
 import ProductSalesHistory from './components/ProductSalesHistory'
+import { VirtualProductGrid } from './components/VirtualProductGrid'
+import { useOfflineSync } from './hooks/useOfflineSync'
+import * as db from './utils/db'
+import * as localStorage from './utils/localStorage'
+import { registerServiceWorker } from './utils/offline'
 import './App.css'
 
 const TAX_RATE = 0.15 // 15% VAT for KSA
@@ -59,13 +64,15 @@ function formatCurrency(n) {
 }
 
 function App() {
-  const [dark, setDark] = useState(false)
+  // Load saved preferences
+  const [dark, setDark] = useState(() => localStorage.getTheme())
   const [search, setSearch] = useState("")
+  const [debouncedSearch, setDebouncedSearch] = useState("")
   const [category, setCategory] = useState("All")
   const [activeTab, setActiveTab] = useState("products")
   const [cart, setCart] = useState([])
-  const [viewMode, setViewMode] = useState("grid")
-  const [taxMode, setTaxMode] = useState("exclusive")
+  const [viewMode, setViewMode] = useState(() => localStorage.getViewMode())
+  const [taxMode, setTaxMode] = useState(() => localStorage.getTaxMode())
   
   // Zoho integration states
   const [authStatus, setAuthStatus] = useState({ authenticated: false })
@@ -73,7 +80,7 @@ function App() {
   const [customers, setCustomers] = useState([])
   const [selectedCustomer, setSelectedCustomer] = useState(null)
   const [loading, setLoading] = useState(false)
-  const [syncStatus, setSyncStatus] = useState("")
+  const [syncStatusLocal, setSyncStatusLocal] = useState("")
   const [lastInvoice, setLastInvoice] = useState(null)
   const [editItemForm, setEditItemForm] = useState({ unit: '', price: 0, qty: 1 })
   const [cartRef, setCartRef] = useState(null)
@@ -82,19 +89,134 @@ function App() {
   const [showProductSales, setShowProductSales] = useState(false)
   const [selectedProductForSales, setSelectedProductForSales] = useState(null)
 
-  // Apply dark mode
+  // UI state
+  const [isCartCollapsed, setIsCartCollapsed] = useState(false)
+  const [selectedProductIndex, setSelectedProductIndex] = useState(-1)
+
+  // Container dimensions for virtual scrolling
+  const gridContainerRef = useRef(null)
+  const [containerDimensions, setContainerDimensions] = useState({ width: 0, height: 0 })
+  const [isMobile, setIsMobile] = useState(false)
+
+  // Offline sync hook
+  const { 
+    isOffline, 
+    syncStatus, 
+    lastSyncTime, 
+    pendingChanges,
+    syncProducts, 
+    syncCustomers, 
+    saveTransaction, 
+    syncData 
+  } = useOfflineSync(BACKEND_URL)
+
+  // Initialize app with IndexedDB
+  useEffect(() => {
+    const initializeApp = async () => {
+      // Check database version and clear if needed
+      const dbVersion = window.localStorage.getItem('db_version')
+      if (dbVersion !== '2') {
+        console.log('Clearing old database schema...')
+        try {
+          await db.clearAllData() // Clear all IndexedDB data
+        } catch (err) {
+          console.error('Failed to clear old data:', err)
+        }
+        window.localStorage.setItem('db_version', '2')
+      }
+      
+      // Initialize IndexedDB first and wait for it
+      await db.initDB()
+      
+      // Register service worker for PWA
+      registerServiceWorker()
+      
+      // Load saved cart from IndexedDB
+      const savedCart = await db.getCart()
+      if (savedCart && savedCart.length > 0) {
+        setCart(savedCart)
+      }
+      
+      // Load last customer
+      const lastCustomer = localStorage.getLastCustomer()
+      if (lastCustomer) {
+        setSelectedCustomer(lastCustomer.contact_id)
+      }
+      
+      // Check auth status after IndexedDB is ready
+      checkAuthStatus()
+    }
+    
+    initializeApp()
+  }, [])
+
+  // Apply and save dark mode
   useEffect(() => {
     if (dark) {
       document.documentElement.classList.add('dark')
     } else {
       document.documentElement.classList.remove('dark')
     }
+    localStorage.saveTheme(dark)
   }, [dark])
-
-  // Check auth status on mount
+  
+  // Save preferences when they change
   useEffect(() => {
-    checkAuthStatus()
-  }, [])
+    localStorage.saveViewMode(viewMode)
+  }, [viewMode])
+  
+  useEffect(() => {
+    localStorage.saveTaxMode(taxMode)
+  }, [taxMode])
+  
+  // Save cart to IndexedDB when it changes
+  useEffect(() => {
+    if (cart.length > 0) {
+      db.saveCart(cart)
+    } else {
+      db.clearCart()
+    }
+  }, [cart])
+  
+  // Save selected customer
+  useEffect(() => {
+    if (selectedCustomer && customers.length > 0) {
+      const customer = customers.find(c => c.contact_id === selectedCustomer)
+      if (customer) {
+        localStorage.saveLastCustomer(customer)
+      }
+    }
+  }, [selectedCustomer, customers])
+
+  // Check if mobile and measure container dimensions
+  useEffect(() => {
+    const measureContainer = () => {
+      setIsMobile(window.innerWidth < 768)
+      
+      if (gridContainerRef.current) {
+        const rect = gridContainerRef.current.getBoundingClientRect()
+        const cartWidth = isCartCollapsed ? 60 : 320 // Collapsed vs expanded cart width
+        setContainerDimensions({
+          width: rect.width || window.innerWidth - cartWidth - 48, // Account for cart + padding
+          height: rect.height || window.innerHeight - 300 // Reserve space for header
+        })
+      }
+    }
+    
+    measureContainer()
+    window.addEventListener('resize', measureContainer)
+    return () => window.removeEventListener('resize', measureContainer)
+  }, [isCartCollapsed])
+
+  // Debounce search input
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(search)
+    }, 300)
+    
+    return () => clearTimeout(timer)
+  }, [search])
+
 
   const checkAuthStatus = async () => {
     try {
@@ -112,16 +234,16 @@ function App() {
 
   const fetchItems = async () => {
     setLoading(true)
-    setSyncStatus("Fetching items from Zoho...")
+    setSyncStatusLocal("Fetching items from Zoho...")
     try {
-      const response = await axios.get(`${BACKEND_URL}/api/items`)
-      console.log('Items response:', response.data);
-      console.log('First item structure:', response.data.items?.[0]);
-      setItems(response.data.items || [])
-      setSyncStatus(`Loaded ${response.data.items?.length || 0} items`)
+      const items = await syncProducts()
+      console.log('Items loaded:', items);
+      console.log('First item structure:', items?.[0]);
+      setItems(items || [])
+      setSyncStatusLocal(`Loaded ${items?.length || 0} items`)
     } catch (error) {
       console.error('Failed to fetch items:', error)
-      setSyncStatus("Failed to load items")
+      setSyncStatusLocal("Failed to load items")
     } finally {
       setLoading(false)
     }
@@ -129,8 +251,8 @@ function App() {
 
   const fetchCustomers = async () => {
     try {
-      const response = await axios.get(`${BACKEND_URL}/api/customers`)
-      setCustomers(response.data.customers || [])
+      const customers = await syncCustomers()
+      setCustomers(customers || [])
     } catch (error) {
       console.error('Failed to fetch customers:', error)
     }
@@ -152,10 +274,9 @@ function App() {
     }
   }
 
-  const addToCart = (item) => {
+  const addToCart = useCallback((item) => {
     console.log('=== addToCart called ===')
     console.log('Item:', item)
-    console.log('Current cart length:', cart.length)
     
     const basePrice = item.price || item.rate || item.selling_price || 0
     console.log('Base price:', basePrice)
@@ -165,45 +286,42 @@ function App() {
       return
     }
     
-    const existingItem = cart.find(i => i.id === item.id && i.unit === 'PCS')
-    
-    if (existingItem) {
-      console.log('Updating existing item quantity')
-      setCart(prev => prev.map(i => 
-        i.id === item.id && i.unit === 'PCS'
-          ? { ...i, qty: i.qty + 1 }
-          : i
-      ))
-    } else {
-      console.log('Adding new item to cart')
-      const adjustedPrice = taxMode === "inclusive" ? basePrice * 1.15 : basePrice
-      const newItem = {
-        id: item.id,
-        name: item.name,
-        price: parseFloat(adjustedPrice),
-        qty: 1,
-        unit: 'PCS',
-        storedUnit: item.storedUnit || 'PCS',
-        tax_id: item.tax_id || "",
-        tax_percentage: item.tax_percentage || 0
-      }
-      console.log('New cart item:', newItem)
+    setCart(prev => {
+      const existingItem = prev.find(i => i.id === item.id && i.unit === 'PCS')
       
-      setCart(prev => {
-        console.log('Previous cart:', prev)
-        const newCart = [...prev, newItem]
-        console.log('New cart:', newCart)
-        return newCart
-      })
-      
-      // Auto scroll to bottom of cart
-      setTimeout(() => {
-        if (cartRef) {
-          cartRef.scrollTo({ top: cartRef.scrollHeight, behavior: 'smooth' })
+      if (existingItem) {
+        console.log('Updating existing item quantity')
+        return prev.map(i => 
+          i.id === item.id && i.unit === 'PCS'
+            ? { ...i, qty: i.qty + 1 }
+            : i
+        )
+      } else {
+        console.log('Adding new item to cart')
+        const adjustedPrice = taxMode === "inclusive" ? basePrice * 1.15 : basePrice
+        const newItem = {
+          id: item.id,
+          name: item.name,
+          price: parseFloat(adjustedPrice),
+          qty: 1,
+          unit: 'PCS',
+          storedUnit: item.storedUnit || 'PCS',
+          tax_id: item.tax_id || "",
+          tax_percentage: item.tax_percentage || 0
         }
-      }, 100)
-    }
-  }
+        console.log('New cart item:', newItem)
+        
+        // Auto scroll to bottom of cart
+        requestAnimationFrame(() => {
+          if (cartRef) {
+            cartRef.scrollTo({ top: cartRef.scrollHeight, behavior: 'smooth' })
+          }
+        })
+        
+        return [...prev, newItem]
+      }
+    })
+  }, [taxMode, cartRef])
   
   const addToCartWithDetails = (item, unit, qty, price, isEdit = false) => {
     console.log('Full item object:', item);
@@ -258,19 +376,19 @@ function App() {
     setSelectedItemForUnit(null)
   }
 
-  const updateQuantity = (id, delta) => {
-    setCart(cart.map(item => {
+  const updateQuantity = useCallback((id, delta) => {
+    setCart(prev => prev.map(item => {
       if (item.id === id) {
         const newQty = Math.max(1, item.qty + delta)
         return { ...item, qty: newQty }
       }
       return item
     }))
-  }
+  }, [])
 
-  const removeFromCart = (id, unit) => {
-    setCart(cart.filter(item => !(item.id === id && item.unit === unit)))
-  }
+  const removeFromCart = useCallback((id, unit) => {
+    setCart(prev => prev.filter(item => !(item.id === id && item.unit === unit)))
+  }, [])
 
   const openEditItem = (item) => {
     setSelectedItemForUnit(item)
@@ -283,17 +401,17 @@ function App() {
   }
 
 
-  const clearCart = () => {
+  const clearCart = useCallback(() => {
     setCart([])
     setSelectedCustomer(null)
     setLastInvoice(null)
-  }
+  }, [])
 
   // Download invoice PDF
   const downloadInvoice = async (invoiceId, invoiceNumber) => {
     try {
       console.log('Downloading invoice:', invoiceId);
-      setSyncStatus(`Downloading invoice ${invoiceNumber}...`);
+      setSyncStatusLocal(`Downloading invoice ${invoiceNumber}...`);
       
       const response = await axios.get(`${BACKEND_URL}/api/invoices/${invoiceId}/download`, {
         responseType: 'blob'
@@ -315,7 +433,7 @@ function App() {
       window.URL.revokeObjectURL(url);
       
       console.log(`Invoice ${invoiceNumber} downloaded successfully`);
-      setSyncStatus(`Invoice ${invoiceNumber} downloaded successfully!`);
+      setSyncStatusLocal(`Invoice ${invoiceNumber} downloaded successfully!`);
     } catch (error) {
       console.error('Failed to download invoice:', error);
       const errorMsg = error.response?.status === 404 
@@ -324,7 +442,7 @@ function App() {
         ? 'Authentication error. Please refresh and try again.'
         : 'Failed to download invoice PDF. Please try again.';
       
-      setSyncStatus(`Download failed: ${errorMsg}`);
+      setSyncStatusLocal(`Download failed: ${errorMsg}`);
       alert(errorMsg);
     }
   };
@@ -382,126 +500,185 @@ function App() {
       })
 
       const invoiceData = {
-        customer_id: selectedCustomer?.contact_id,
+        customer_id: selectedCustomer,
         line_items: lineItems,
         is_inclusive_tax: taxMode === "inclusive"
       }
 
-      const response = await axios.post(`${BACKEND_URL}/api/invoices`, invoiceData)
+      // Use offline sync for invoice creation
+      const result = await saveTransaction(invoiceData)
       
-      const invoiceData_result = {
-        invoice_number: response.data.invoice.invoice_number,
-        total: response.data.invoice.total,
-        invoice_id: response.data.invoice.invoice_id
-      };
-      
-      setLastInvoice(invoiceData_result)
-      setSyncStatus("Invoice created successfully!")
+      if (result.pending) {
+        setSyncStatusLocal("Invoice queued for sync when online")
+        setLastInvoice({
+          invoice_number: `PENDING-${result.localId}`,
+          total: cart.reduce((sum, item) => sum + (item.price * item.qty), 0),
+          invoice_id: null,
+          pending: true
+        })
+      } else {
+        const invoiceData_result = {
+          invoice_number: result.invoice.invoice_number,
+          total: result.invoice.total,
+          invoice_id: result.invoice.invoice_id
+        };
+        
+        setLastInvoice(invoiceData_result)
+        setSyncStatusLocal("Invoice created successfully!")
 
-      // Automatically download the invoice PDF after a short delay
-      setTimeout(async () => {
-        await downloadInvoice(invoiceData_result.invoice_id, invoiceData_result.invoice_number);
-      }, 2000); // Increased delay to allow PDF generation
+        // Automatically download the invoice PDF after a short delay
+        setTimeout(async () => {
+          await downloadInvoice(invoiceData_result.invoice_id, invoiceData_result.invoice_number);
+        }, 2000);
+      }
 
       clearCart()
     } catch (error) {
       console.error('Failed to create invoice:', error)
-      setSyncStatus("Failed to create invoice")
+      setSyncStatusLocal("Failed to create invoice")
     } finally {
       setLoading(false)
     }
   }
 
-  // Computed values
-  const subtotal = cart.reduce((sum, item) => sum + (item.price * item.qty), 0)
-  const tax = taxMode === "inclusive" ? subtotal * (TAX_RATE / (1 + TAX_RATE)) : subtotal * TAX_RATE
-  const total = taxMode === "inclusive" ? subtotal : subtotal + tax
-  const subtotalQty = cart.reduce((sum, item) => sum + item.qty, 0)
+  // Computed values - memoized for performance
+  const subtotal = useMemo(() => 
+    cart.reduce((sum, item) => sum + (item.price * item.qty), 0), [cart])
+  
+  const tax = useMemo(() => 
+    taxMode === "inclusive" ? subtotal * (TAX_RATE / (1 + TAX_RATE)) : subtotal * TAX_RATE, 
+    [subtotal, taxMode])
+  
+  const total = useMemo(() => 
+    taxMode === "inclusive" ? subtotal : subtotal + tax, 
+    [subtotal, tax, taxMode])
+  
+  const subtotalQty = useMemo(() => 
+    cart.reduce((sum, item) => sum + item.qty, 0), [cart])
 
   const filteredItems = useMemo(() => {
+    if (!items || items.length === 0) return []
+    
     return items.filter(item => {
-      const matchesSearch = item.name.toLowerCase().includes(search.toLowerCase())
+      const matchesSearch = !debouncedSearch || 
+        item.name?.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
+        item.sku?.toLowerCase().includes(debouncedSearch.toLowerCase())
       const matchesCategory = category === "All" || item.group_name === category
       return matchesSearch && matchesCategory
     })
-  }, [items, search, category])
+  }, [items, debouncedSearch, category])
 
   const categories = useMemo(() => {
+    if (!items || items.length === 0) return ["All"]
     const cats = new Set(items.map(i => i.group_name).filter(Boolean))
-    return ["All", ...Array.from(cats)]
+    return ["All", ...Array.from(cats).sort()]
   }, [items])
+
+  // Keyboard navigation - placed after filteredItems definition
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      // Only handle keyboard navigation when not typing in inputs
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA') {
+        return
+      }
+
+      const maxIndex = filteredItems.length - 1
+      
+      switch (e.key) {
+        case 'ArrowRight':
+          e.preventDefault()
+          setSelectedProductIndex(prev => prev < maxIndex ? prev + 1 : 0)
+          break
+        case 'ArrowLeft':
+          e.preventDefault()
+          setSelectedProductIndex(prev => prev > 0 ? prev - 1 : maxIndex)
+          break
+        case 'ArrowDown':
+          e.preventDefault()
+          const columnsPerRow = Math.floor(containerDimensions.width / 200) || 4
+          setSelectedProductIndex(prev => {
+            const newIndex = prev + columnsPerRow
+            return newIndex <= maxIndex ? newIndex : prev
+          })
+          break
+        case 'ArrowUp':
+          e.preventDefault()
+          const cols = Math.floor(containerDimensions.width / 200) || 4
+          setSelectedProductIndex(prev => {
+            const newIndex = prev - cols
+            return newIndex >= 0 ? newIndex : prev
+          })
+          break
+        case 'Enter':
+          e.preventDefault()
+          if (selectedProductIndex >= 0 && selectedProductIndex <= maxIndex) {
+            addToCart(filteredItems[selectedProductIndex])
+          }
+          break
+        case 'Escape':
+          e.preventDefault()
+          setSelectedProductIndex(-1)
+          break
+        case '/':
+          e.preventDefault()
+          // Focus search input
+          const searchInput = document.querySelector('input[placeholder*="Search"]')
+          if (searchInput) {
+            searchInput.focus()
+          }
+          break
+        case 'c':
+          e.preventDefault()
+          setIsCartCollapsed(!isCartCollapsed)
+          break
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [filteredItems, selectedProductIndex, containerDimensions.width, addToCart, isCartCollapsed])
 
   return (
     <div className="h-screen bg-gray-50 dark:bg-gray-900 overflow-hidden">
       {/* Main Content - Full Width */}
       <div className="flex flex-col h-full">
         {/* Header */}
-        <header className="bg-white dark:bg-gray-800 border-b px-6 py-4">
-          <div className="flex items-center justify-between">
-            {/* Left Section - Branding & Search */}
-            <div className="flex items-center gap-6">
-              <div>
-                <h1 className="text-2xl font-bold gradient-text">TMR POS</h1>
-                <p className="text-sm text-muted-foreground">Retail Management System</p>
-              </div>
-              
+        <header className="bg-white dark:bg-gray-800 border-b">
+          {/* Main Header Row */}
+          <div className="px-6 py-3">
+            <div className="flex items-center justify-between">
+              {/* Left: Logo & Search */}
               <div className="flex items-center gap-4">
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    type="text"
-                    placeholder="Search products..."
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    className="pl-10 w-80"
-                  />
+                <div>
+                  <h1 className="text-lg font-bold gradient-text">TMR POS</h1>
                 </div>
                 
-                {/* Tax Mode Toggle - moved here with clear selection */}
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium">Tax Mode:</span>
-                  <div className="flex border-2 border-gray-300 dark:border-gray-600 rounded-lg p-1 bg-white dark:bg-gray-800">
-                    <Button
-                      size="sm"
-                      onClick={() => setTaxMode("exclusive")}
-                      className={`text-xs px-3 py-2 rounded-md transition-all font-medium ${
-                        taxMode === "exclusive" 
-                          ? 'bg-blue-600 text-white shadow-md ring-2 ring-blue-300' 
-                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600'
-                      }`}
-                    >
-                      {taxMode === "exclusive" && "✓ "}Tax Exclusive
-                    </Button>
-                    <Button
-                      size="sm"
-                      onClick={() => setTaxMode("inclusive")}
-                      className={`text-xs px-3 py-2 rounded-md transition-all ml-1 font-medium ${
-                        taxMode === "inclusive" 
-                          ? 'bg-green-600 text-white shadow-md ring-2 ring-green-300' 
-                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600'
-                      }`}
-                    >
-                      {taxMode === "inclusive" && "✓ "}Tax Inclusive
-                    </Button>
+                <div className="relative enhanced-input">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground transition-colors" />
+                  <Input
+                    type="text"
+                    placeholder="Search products... (Press / to focus)"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    className="pl-10 w-72 transition-all duration-200"
+                  />
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                    /
                   </div>
                 </div>
               </div>
-            </div>
 
-            {/* Right Section - Customer Selection & Actions */}
-            <div className="flex items-center gap-4">
-              {/* Customer Selection - no default */}
+              {/* Center: Customer Selection */}
               <div className="flex items-center gap-2">
-                <label className="text-sm font-medium">Customer:</label>
+                <label className="text-sm font-medium text-muted-foreground">Customer:</label>
                 <select 
-                  value={selectedCustomer?.contact_id || ""}
+                  value={selectedCustomer || ""}
                   onChange={(e) => {
-                    const customer = customers.find(c => c.contact_id === e.target.value);
-                    setSelectedCustomer(customer || null);
+                    setSelectedCustomer(e.target.value || null);
                   }}
-                  className="px-3 py-2 border rounded-md bg-background min-w-[200px]"
+                  className="px-3 py-2 border rounded-lg bg-background min-w-[240px] text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary"
                 >
-                  <option value="">Select Customer (Required)</option>
+                  <option value="">Select Customer</option>
                   {customers.map(customer => (
                     <option key={customer.contact_id} value={customer.contact_id}>
                       {customer.contact_name}
@@ -510,60 +687,178 @@ function App() {
                 </select>
               </div>
 
-
-              {/* Zoho Status */}
-              {authStatus.authenticated ? (
-                <div className="flex items-center gap-2 text-sm">
-                  <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
-                  <span className="text-muted-foreground">Connected</span>
+              {/* Right: Status & Actions */}
+              <div className="flex items-center gap-3">
+                {/* Status Indicators */}
+                <div className="flex items-center gap-2">
+                  {/* Network Status */}
+                  <div className="flex items-center gap-1">
+                    {isOffline ? (
+                      <Badge variant="outline" className="text-xs">
+                        <WifiOff className="h-3 w-3 mr-1 text-orange-500" />
+                        Offline
+                      </Badge>
+                    ) : (
+                      <div className="flex items-center gap-1 text-xs text-emerald-600">
+                        <Wifi className="h-3 w-3" />
+                        <span>Online</span>
+                        {authStatus.authenticated && (
+                          <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse ml-1" />
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  
+                  {pendingChanges > 0 && (
+                    <Badge variant="warning" className="text-xs">
+                      {pendingChanges} pending
+                    </Badge>
+                  )}
                 </div>
-              ) : (
-                <Button className="emerald-btn" onClick={handleLogin}>
-                  Connect to Zoho
-                </Button>
-              )}
 
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => setDark(!dark)}
-              >
-                {dark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
-              </Button>
-              
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={fetchItems}
-                disabled={loading || !authStatus.authenticated}
-              >
-                <RefreshCw className={cn("h-5 w-5", loading && "animate-spin")} />
-              </Button>
+                {/* Action Buttons */}
+                <div className="flex items-center gap-1 border-l pl-3">
+                  {!authStatus.authenticated && (
+                    <Button size="sm" className="emerald-btn text-xs h-8" onClick={handleLogin}>
+                      Connect Zoho
+                    </Button>
+                  )}
+                  
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setDark(!dark)}
+                    className="interactive-scale h-8 w-8"
+                    title="Toggle Theme"
+                  >
+                    {dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+                  </Button>
+                  
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => {
+                      if (authStatus.authenticated) {
+                        fetchItems()
+                        fetchCustomers()
+                      } else {
+                        syncData()
+                      }
+                    }}
+                    disabled={loading}
+                    title={authStatus.authenticated ? "Refresh Data" : "Sync from Cache"}
+                    className="interactive-scale h-8 w-8"
+                  >
+                    <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
+                  </Button>
 
-              <Button
-                variant="success"
-                onClick={clearCart}
-                disabled={cart.length === 0}
-              >
-                <RefreshCw className="mr-2 h-4 w-4" />
-                New Sale
-              </Button>
-
+                  <Button
+                    size="sm"
+                    onClick={clearCart}
+                    disabled={cart.length === 0}
+                    className="enhanced-btn text-xs h-8 px-3"
+                  >
+                    <RefreshCw className="mr-1 h-3 w-3" />
+                    New Sale
+                  </Button>
+                  
+                  {/* Keyboard Shortcuts Help */}
+                  <div className="relative group">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="interactive-scale h-8 w-8"
+                      title="Keyboard Shortcuts"
+                    >
+                      <kbd className="text-xs bg-muted px-1 py-0.5 rounded">?</kbd>
+                    </Button>
+                    <div className="absolute top-full right-0 mt-2 w-56 bg-background border rounded-lg shadow-lg p-3 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50">
+                      <h4 className="font-semibold text-sm mb-2">Keyboard Shortcuts</h4>
+                      <div className="space-y-1 text-xs">
+                        <div className="flex justify-between">
+                          <span>Search</span>
+                          <kbd className="bg-muted px-1 rounded">/</kbd>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Navigate</span>
+                          <kbd className="bg-muted px-1 rounded">↑↓←→</kbd>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Add to cart</span>
+                          <kbd className="bg-muted px-1 rounded">Enter</kbd>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Toggle cart</span>
+                          <kbd className="bg-muted px-1 rounded">C</kbd>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
 
-          {syncStatus && (
-            <div className="mt-2">
-              <Badge variant="outline">{syncStatus}</Badge>
+          {/* Secondary Row: Tax Mode & Controls */}
+          <div className="px-6 py-2 bg-gray-50 dark:bg-gray-800/50 border-t border-gray-100 dark:border-gray-700">
+            <div className="flex items-center justify-between">
+              {/* Left: Tax Mode Toggle */}
+              <div className="flex items-center gap-3">
+                <span className="text-sm font-medium text-muted-foreground">Tax:</span>
+                <div className="flex items-center bg-white dark:bg-gray-800 border rounded-lg p-0.5">
+                  <Button
+                    size="sm"
+                    onClick={() => setTaxMode("exclusive")}
+                    className={`text-xs px-3 py-1 h-7 rounded-md transition-all ${
+                      taxMode === "exclusive" 
+                        ? 'bg-blue-600 text-white shadow-sm' 
+                        : 'bg-transparent hover:bg-gray-100 dark:hover:bg-gray-700 text-muted-foreground'
+                    }`}
+                  >
+                    {taxMode === "exclusive" && "✓ "}Exclusive
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={() => setTaxMode("inclusive")}
+                    className={`text-xs px-3 py-1 h-7 rounded-md transition-all ${
+                      taxMode === "inclusive" 
+                        ? 'bg-green-600 text-white shadow-sm' 
+                        : 'bg-transparent hover:bg-gray-100 dark:hover:bg-gray-700 text-muted-foreground'
+                    }`}
+                  >
+                    {taxMode === "inclusive" && "✓ "}Inclusive
+                  </Button>
+                </div>
+              </div>
+
+              {/* Right: Sync Status */}
+              <div className="flex items-center gap-2">
+                {syncStatus && (
+                  <Badge variant="outline" className="text-xs">
+                    {syncStatus}
+                  </Badge>
+                )}
+                {syncStatusLocal && (
+                  <Badge variant="secondary" className="text-xs">
+                    {syncStatusLocal}
+                  </Badge>
+                )}
+                {items.length > 0 && (
+                  <span className="text-xs text-muted-foreground">
+                    {items.length} items loaded
+                  </span>
+                )}
+              </div>
             </div>
-          )}
-          
+          </div>
+
+        
         </header>
 
         {/* Content Area */}
         <div className="flex-1 flex overflow-hidden">
           {/* Products Grid - Wider */}
-          <div className="flex-1 overflow-y-auto p-6">
+          <div className="flex-1 overflow-y-auto p-6" ref={gridContainerRef}>
             {/* Category Tabs */}
             <div className="mb-6 flex items-center justify-between">
               <div className="flex gap-2 overflow-x-auto pb-2">
@@ -597,7 +892,7 @@ function App() {
               </div>
             </div>
 
-            {/* Products */}
+            {/* Products - Virtual Grid for Performance */}
             {!authStatus.authenticated ? (
               <Card className="glass-card">
                 <CardContent className="flex flex-col items-center justify-center py-12">
@@ -609,154 +904,81 @@ function App() {
                   </Button>
                 </CardContent>
               </Card>
-            ) : filteredItems.length === 0 ? (
-              <Card className="glass-card">
-                <CardContent className="flex flex-col items-center justify-center py-12">
-                  <Package className="h-12 w-12 text-muted-foreground mb-4" />
-                  <p className="text-lg font-medium">No products found</p>
-                  <p className="text-sm text-muted-foreground">Try adjusting your search or filters</p>
-                </CardContent>
-              </Card>
-            ) : viewMode === "grid" ? (
-              <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-4">
-                {filteredItems.map(item => (
-                  <Card 
-                    key={item.id} 
-                    className="product-card cursor-pointer"
-                    onClick={(e) => {
-                      e.preventDefault()
-                      e.stopPropagation()
-                      addToCart(item)
-                    }}
-                  >
-                    <CardHeader className="pb-2">
-                      <div className="flex items-start justify-between">
-                        <CardTitle className="text-sm font-medium line-clamp-3 flex-1 mr-2">
-                          {item.name}
-                        </CardTitle>
-                        {item.stock_on_hand && (
-                          <Badge 
-                            variant={item.stock_on_hand > 10 ? "success" : "warning"}
-                            className="text-xs shrink-0"
-                          >
-                            {item.stock_on_hand}
-                          </Badge>
-                        )}
-                      </div>
-                    </CardHeader>
-                    <CardContent className="pt-0">
-                      <div className="flex items-end justify-between">
-                        <div className="text-right flex-1">
-                          <div className="text-lg font-bold text-primary">
-                            {formatCurrency(taxMode === "inclusive" ? (item.price || item.rate || item.selling_price || 0) * 1.15 : (item.price || item.rate || item.selling_price || 0))}
-                          </div>
-                          <div className="text-xs text-muted-foreground">
-                            per PCS
-                          </div>
-                        </div>
-                        <div className="flex gap-1">
-                          <Button 
-                            size="icon" 
-                            variant="ghost" 
-                            className="h-8 w-8"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setSelectedProductForSales(item);
-                              setShowProductSales(true);
-                            }}
-                            title="View Sales History"
-                          >
-                            <TrendingUp className="h-4 w-4" />
-                          </Button>
-                          <Button size="icon" variant="ghost" className="h-8 w-8">
-                            <Plus className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
             ) : (
-              <div className="space-y-1">
-                {filteredItems.map(item => (
-                  <div 
-                    key={item.id}
-                    className="flex items-center justify-between p-3 bg-white dark:bg-gray-800 border rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer transition-colors"
-                    onClick={(e) => {
-                      e.preventDefault()
-                      e.stopPropagation()
-                      addToCart(item)
-                    }}
-                  >
-                    <div className="flex items-center flex-1">
-                      <div className="flex-1 min-w-0">
-                        <h3 className="font-medium text-sm truncate">{item.name}</h3>
-                      </div>
-                    </div>
-                    
-                    <div className="flex items-center gap-4">
-                      <Button 
-                        size="icon" 
-                        variant="ghost" 
-                        className="h-7 w-7"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSelectedProductForSales(item);
-                          setShowProductSales(true);
-                        }}
-                        title="View Sales History"
-                      >
-                        <TrendingUp className="h-3 w-3" />
-                      </Button>
-                      {item.stock_on_hand && (
-                        <Badge 
-                          variant={item.stock_on_hand > 10 ? "success" : "warning"} 
-                          className="text-xs"
-                        >
-                          {item.stock_on_hand}
-                        </Badge>
-                      )}
-                      <div className="text-right">
-                        <div className="font-bold text-primary">
-                          {formatCurrency(taxMode === "inclusive" ? (item.price || item.rate || item.selling_price || 0) * 1.15 : (item.price || item.rate || item.selling_price || 0))}
-                        </div>
-                        <div className="text-xs text-muted-foreground">per PCS</div>
-                      </div>
-                      <Button size="icon" variant="ghost" className="h-8 w-8 hover:bg-primary hover:text-white">
-                        <Plus className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
+              <VirtualProductGrid
+                items={filteredItems}
+                onAddToCart={addToCart}
+                formatCurrency={formatCurrency}
+                taxMode={taxMode}
+                viewMode={viewMode}
+                isMobile={isMobile}
+                isLoading={loading}
+                containerHeight={containerDimensions.height}
+                containerWidth={containerDimensions.width}
+                selectedIndex={selectedProductIndex}
+                onProductSales={(item) => {
+                  setSelectedProductForSales(item);
+                  setShowProductSales(true);
+                }}
+              />
             )}
           </div>
 
-          {/* Cart Sidebar - Narrower */}
-          <div className="w-80 bg-white dark:bg-gray-800 border-l flex flex-col">
+          {/* Cart Sidebar - Collapsible */}
+          <div className={cn(
+            "bg-white dark:bg-gray-800 border-l flex flex-col transition-all duration-300 ease-in-out",
+            isCartCollapsed ? "w-16" : "w-80"
+          )}>
             <div className="p-4 border-b">
               <div className="flex items-center justify-between">
-                <h3 className="font-semibold flex items-center gap-2">
-                  <ShoppingCart className="h-5 w-5" />
-                  Cart ({subtotalQty})
-                </h3>
-                {cart.length > 0 && (
+                <div className="flex items-center gap-2">
+                  <div className="relative">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => setIsCartCollapsed(!isCartCollapsed)}
+                      className="h-8 w-8 interactive-scale"
+                      title={`${isCartCollapsed ? 'Expand' : 'Collapse'} cart (C)`}
+                    >
+                      <Menu className="h-4 w-4" />
+                    </Button>
+                    {!isCartCollapsed && (
+                      <div className="absolute -top-1 -right-1 text-xs text-muted-foreground bg-muted px-1 py-0.5 rounded text-[10px]">
+                        C
+                      </div>
+                    )}
+                  </div>
+                  {!isCartCollapsed && (
+                    <h3 className="font-semibold flex items-center gap-2">
+                      <ShoppingCart className="h-5 w-5" />
+                      Cart ({subtotalQty})
+                    </h3>
+                  )}
+                </div>
+                {!isCartCollapsed && cart.length > 0 && (
                   <Button variant="ghost" size="sm" onClick={clearCart}>
                     Clear
                   </Button>
                 )}
               </div>
+              {isCartCollapsed && cart.length > 0 && (
+                <div className="mt-2 text-center">
+                  <Badge variant="default" className="text-xs">
+                    {subtotalQty}
+                  </Badge>
+                </div>
+              )}
             </div>
 
-            <div className="flex-1 overflow-y-auto p-4" ref={setCartRef}>
-              {cart.length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
-                  <ShoppingCart className="h-12 w-12 mb-4 opacity-50" />
-                  <p>Cart is empty</p>
-                  <p className="text-sm mt-2">Add items to get started</p>
-                </div>
-              ) : (
+            {!isCartCollapsed && (
+              <div className="flex-1 overflow-y-auto p-4" ref={setCartRef}>
+                {cart.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
+                    <ShoppingCart className="h-12 w-12 mb-4 opacity-50" />
+                    <p>Cart is empty</p>
+                    <p className="text-sm mt-2">Add items to get started</p>
+                  </div>
+                ) : (
                 <div className="space-y-3">
                   {cart.map(item => (
                     <Card key={`${item.id}-${item.unit}`} className="shimmer">
@@ -815,10 +1037,11 @@ function App() {
                     </Card>
                   ))}
                 </div>
-              )}
-            </div>
+                )}
+              </div>
+            )}
 
-            {cart.length > 0 && (
+            {!isCartCollapsed && cart.length > 0 && (
               <div className="border-t p-4 space-y-3">
 
                 {/* Totals */}
@@ -839,7 +1062,7 @@ function App() {
 
                 {/* Checkout Button */}
                 <Button
-                  className="w-full emerald-btn"
+                  className="w-full emerald-btn enhanced-btn glow-effect"
                   size="lg"
                   onClick={handleCreateInvoice}
                   disabled={loading || !authStatus.authenticated || !selectedCustomer}
@@ -876,18 +1099,25 @@ function App() {
                         </Badge>
                       </div>
                       <Button
-                        onClick={() => downloadInvoice(lastInvoice.invoice_id, lastInvoice.invoice_number)}
+                        onClick={() => {
+                          if (lastInvoice.pending) {
+                            alert('Invoice is pending sync. PDF will be available once synced online.')
+                          } else {
+                            downloadInvoice(lastInvoice.invoice_id, lastInvoice.invoice_number)
+                          }
+                        }}
                         size="sm"
                         className="w-full text-xs bg-emerald-600 text-white hover:bg-emerald-700"
-                        disabled={loading}
+                        disabled={loading || lastInvoice.pending}
                       >
-                        📥 Download PDF
+                        {lastInvoice.pending ? '⏳ Pending Sync' : '📥 Download PDF'}
                       </Button>
                     </CardContent>
                   </Card>
                 )}
-              </div>
-            )}
+                </div>
+              )}
+
           </div>
         </div>
       </div>
