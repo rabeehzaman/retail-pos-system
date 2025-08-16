@@ -249,6 +249,55 @@
   }
 }
 
+/* Long press animations */
+@keyframes longPressIndicator {
+  0% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(0.95);
+    opacity: 0.8;
+  }
+  100% {
+    transform: scale(0.95);
+    opacity: 0.8;
+  }
+}
+
+.long-pressing {
+  animation: longPressIndicator 0.5s ease-out forwards;
+  transition: all 0.1s ease;
+}
+
+.long-press-ready {
+  transition: all 0.2s ease;
+}
+
+.long-press-ready:active {
+  transform: scale(0.98);
+}
+
+/* Long press progress indicator */
+@keyframes longPressProgress {
+  0% {
+    width: 0%;
+  }
+  100% {
+    width: 100%;
+  }
+}
+
+.long-press-progress {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  height: 3px;
+  background: linear-gradient(90deg, #10b981, #34d399);
+  border-radius: 0 0 8px 8px;
+  animation: longPressProgress 0.5s ease-out forwards;
+}
+
 /* Prevent text selection on mobile */
 @media (max-width: 768px) {
   * {

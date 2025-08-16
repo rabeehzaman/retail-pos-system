@@ -400,6 +400,19 @@ function App() {
     setShowUnitPopup(true)
   }
 
+  const handleLongPressProduct = (item) => {
+    // Set up the unit form with default values for new item
+    setSelectedItemForUnit(item)
+    const basePrice = item.price || item.rate || item.selling_price || 0
+    const adjustedPrice = taxMode === "inclusive" ? basePrice * 1.15 : basePrice
+    setEditItemForm({
+      unit: 'PCS',
+      price: adjustedPrice,
+      qty: 1
+    })
+    setShowUnitPopup(true)
+  }
+
 
   const clearCart = useCallback(() => {
     setCart([])
@@ -920,6 +933,7 @@ function App() {
                   setSelectedProductForSales(item);
                   setShowProductSales(true);
                 }}
+                onLongPress={handleLongPressProduct}
               />
             )}
           </div>

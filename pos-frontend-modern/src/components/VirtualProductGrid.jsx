@@ -6,6 +6,7 @@ import { Button } from './ui/button'
 import { Badge } from './ui/badge'
 import { cn } from '../lib/utils'
 import { canHandleLargeLists, getOptimalBatchSize } from '../utils/deviceDetection'
+import { useLongPress } from '../hooks/useLongPress'
 
 // Loading skeleton component
 const ProductSkeleton = () => (
@@ -33,10 +34,11 @@ const ProductSkeleton = () => (
 
 // Memoized product card to prevent unnecessary re-renders
 const ProductCard = memo(({ data, columnIndex, rowIndex, style }) => {
-  const { items, columnCount, onAddToCart, formatCurrency, taxMode, onProductSales, selectedIndex } = data
+  const { items, columnCount, onAddToCart, formatCurrency, taxMode, onProductSales, selectedIndex, onLongPress } = data
   const index = rowIndex * columnCount + columnIndex
   const item = items[index]
   const isSelected = index === selectedIndex
+  const [isLongPressing, setIsLongPressing] = useState(false)
 
   if (!item) return <div style={style} />
 
@@ -44,15 +46,34 @@ const ProductCard = memo(({ data, columnIndex, rowIndex, style }) => {
     ? (item.price || item.rate || item.selling_price || 0) * 1.15 
     : (item.price || item.rate || item.selling_price || 0)
 
+  const handleLongPress = () => {
+    setIsLongPressing(true)
+    onLongPress && onLongPress(item)
+    // Reset the state after a short delay
+    setTimeout(() => setIsLongPressing(false), 150)
+  }
+
+  const handleClick = () => {
+    onAddToCart(item)
+  }
+
+  const longPressHandlers = useLongPress(
+    handleLongPress,
+    handleClick,
+    { threshold: 500 }
+  )
+
   return (
     <div style={style} className="p-1.5">
       <Card 
         className={cn(
-          "h-full product-card cursor-pointer active:scale-[0.98] transition-all touch-manipulation hover:shadow-lg flex flex-col",
-          isSelected && "ring-2 ring-primary shadow-lg scale-105"
+          "h-full product-card cursor-pointer touch-manipulation hover:shadow-lg flex flex-col long-press-ready relative overflow-hidden",
+          isSelected && "ring-2 ring-primary shadow-lg scale-105",
+          isLongPressing && "long-pressing"
         )}
-        onClick={() => onAddToCart(item)}
+        {...longPressHandlers}
       >
+        {isLongPressing && <div className="long-press-progress" />}
         <CardHeader className="pb-2 p-3 flex-shrink-0">
           <div className="flex items-start justify-between gap-2">
             <CardTitle className="text-sm font-medium line-clamp-2 flex-1 leading-tight">
@@ -122,7 +143,8 @@ export function VirtualProductGrid({
   containerHeight = 600,
   containerWidth = null,
   onProductSales = null,
-  selectedIndex = -1
+  selectedIndex = -1,
+  onLongPress = null
 }) {
   // Check if device can handle large lists
   const [currentPage, setCurrentPage] = useState(1)
@@ -210,6 +232,7 @@ export function VirtualProductGrid({
           height={shouldPaginate ? actualHeight - 60 : actualHeight}
           width={actualWidth}
           onProductSales={onProductSales}
+          onLongPress={onLongPress}
         />
         {shouldPaginate && (
           <div className="flex items-center justify-between p-4 border-t">
@@ -256,7 +279,8 @@ export function VirtualProductGrid({
           formatCurrency,
           taxMode,
           onProductSales,
-          selectedIndex
+          selectedIndex,
+          onLongPress
         }}
       >
         {ProductCard}
@@ -290,8 +314,9 @@ export function VirtualProductGrid({
 
 // Virtual list component for list view
 const ListItem = memo(({ index, style, data }) => {
-  const { items, onAddToCart, formatCurrency, taxMode, onProductSales } = data
+  const { items, onAddToCart, formatCurrency, taxMode, onProductSales, onLongPress } = data
   const item = items[index]
+  const [isLongPressing, setIsLongPressing] = useState(false)
 
   if (!item) return <div style={style} />
 
@@ -299,12 +324,33 @@ const ListItem = memo(({ index, style, data }) => {
     ? (item.price || item.rate || item.selling_price || 0) * 1.15 
     : (item.price || item.rate || item.selling_price || 0)
 
+  const handleLongPress = () => {
+    setIsLongPressing(true)
+    onLongPress && onLongPress(item)
+    // Reset the state after a short delay
+    setTimeout(() => setIsLongPressing(false), 150)
+  }
+
+  const handleClick = () => {
+    onAddToCart(item)
+  }
+
+  const longPressHandlers = useLongPress(
+    handleLongPress,
+    handleClick,
+    { threshold: 500 }
+  )
+
   return (
     <div style={style} className="px-4">
       <button
-        className="w-full flex items-center justify-between p-4 bg-card border rounded-lg active:scale-[0.98] transition-all touch-manipulation hover:bg-accent/50"
-        onClick={() => onAddToCart(item)}
+        className={cn(
+          "w-full flex items-center justify-between p-4 bg-card border rounded-lg transition-all touch-manipulation hover:bg-accent/50 long-press-ready relative overflow-hidden",
+          isLongPressing && "long-pressing"
+        )}
+        {...longPressHandlers}
       >
+        {isLongPressing && <div className="long-press-progress" />}
         <div className="flex items-center flex-1 text-left min-w-0 overflow-hidden">
           <div className="flex-1 min-w-0">
             <h3 className="font-medium text-base truncate">{item.name}</h3>
@@ -352,7 +398,7 @@ const ListItem = memo(({ index, style, data }) => {
 
 ListItem.displayName = 'ListItem'
 
-function VirtualList({ items, onAddToCart, formatCurrency, taxMode, height, width, onProductSales }) {
+function VirtualList({ items, onAddToCart, formatCurrency, taxMode, height, width, onProductSales, onLongPress }) {
   return (
     <List
       height={height}
@@ -364,7 +410,8 @@ function VirtualList({ items, onAddToCart, formatCurrency, taxMode, height, widt
         onAddToCart,
         formatCurrency,
         taxMode,
-        onProductSales
+        onProductSales,
+        onLongPress
       }}
     >
       {ListItem}
