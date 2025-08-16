@@ -212,10 +212,11 @@ const ProductSalesHistory = ({
           ) : (
             <div className="divide-y divide-gray-200">
               {/* Table Header - Desktop */}
-              <div className="hidden md:grid md:grid-cols-5 gap-4 px-4 py-3 bg-gray-50 text-sm font-medium text-gray-700">
+              <div className="hidden md:grid md:grid-cols-6 gap-4 px-4 py-3 bg-gray-50 text-sm font-medium text-gray-700">
                 <div className="col-span-2">Customer</div>
                 <div>Date</div>
                 <div className="text-center">Quantity</div>
+                <div className="text-right">Unit Price</div>
                 <div className="text-right">Invoice</div>
               </div>
 
@@ -223,7 +224,7 @@ const ProductSalesHistory = ({
               {sales.map((sale, index) => (
                 <div key={`${sale.invoice_id}-${index}`} className="hover:bg-gray-50 transition-colors">
                   {/* Desktop View */}
-                  <div className="hidden md:grid md:grid-cols-5 gap-4 px-4 py-3 items-center">
+                  <div className="hidden md:grid md:grid-cols-6 gap-4 px-4 py-3 items-center">
                     <div className="col-span-2 text-gray-800">
                       {sale.customer_name}
                     </div>
@@ -232,6 +233,9 @@ const ProductSalesHistory = ({
                     </div>
                     <div className="text-center font-medium">
                       {formatQuantity(sale.quantity, sale.unit)}
+                    </div>
+                    <div className="text-right font-medium">
+                      {formatCurrency(sale.rate)}
                     </div>
                     <div className="text-right">
                       <span className="text-sm text-blue-600 hover:text-blue-700">
