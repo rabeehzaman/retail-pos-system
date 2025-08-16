@@ -1015,6 +1015,121 @@ app.get('/api/taxes', async (req, res) => {
     }
 });
 
+// Get product sales history (last 10 sales of a specific product)
+app.get('/api/products/:productId/sales', async (req, res) => {
+    console.log('\n========== FETCHING PRODUCT SALES HISTORY ==========');
+    try {
+        await ensureValidToken();
+        
+        const { productId } = req.params;
+        const { customer_id } = req.query;
+        
+        console.log('[Product Sales] Request params:');
+        console.log(`  - Product ID: ${productId}`);
+        console.log(`  - Customer Filter: ${customer_id || 'none'}`);
+        
+        // Build query parameters - Zoho supports item_id filter!
+        const params = {
+            organization_id: process.env.ZOHO_ORGANIZATION_ID,
+            item_id: productId, // This filters invoices by product
+            per_page: 10, // Last 10 sales
+            page: 1,
+            sort_column: 'date',
+            sort_order: 'D' // Descending (newest first)
+        };
+        
+        // Optionally filter by customer too
+        if (customer_id && customer_id !== 'undefined') {
+            params.customer_id = customer_id;
+            console.log(`[Product Sales] Also filtering by customer: ${customer_id}`);
+        }
+        
+        // Fetch invoices containing this product from Zoho Books
+        const response = await axios.get(`${ZOHO_BOOKS_API_URL}/invoices`, {
+            headers: {
+                'Authorization': `Zoho-oauthtoken ${accessToken}`
+            },
+            params: params
+        });
+        
+        const invoices = response.data.invoices || [];
+        
+        console.log(`[Product Sales] Found ${invoices.length} invoices containing product ${productId}`);
+        
+        // For each invoice, we need to get details to find the quantity of this specific item
+        const salesData = [];
+        
+        for (const invoice of invoices) {
+            try {
+                // Fetch full invoice details to get line items
+                const detailResponse = await axios.get(`${ZOHO_BOOKS_API_URL}/invoices/${invoice.invoice_id}`, {
+                    headers: {
+                        'Authorization': `Zoho-oauthtoken ${accessToken}`
+                    },
+                    params: {
+                        organization_id: process.env.ZOHO_ORGANIZATION_ID
+                    }
+                });
+                
+                const fullInvoice = detailResponse.data.invoice;
+                
+                // Find the line item for this product
+                const productLineItem = fullInvoice.line_items?.find(item => item.item_id === productId);
+                
+                if (productLineItem) {
+                    salesData.push({
+                        invoice_id: invoice.invoice_id,
+                        invoice_number: invoice.invoice_number,
+                        date: invoice.date,
+                        customer_id: invoice.customer_id,
+                        customer_name: invoice.customer_name || 'Walk-in Customer',
+                        quantity: productLineItem.quantity,
+                        unit: productLineItem.unit || 'PCS',
+                        rate: productLineItem.rate,
+                        total: productLineItem.item_total,
+                        status: invoice.status,
+                        is_paid: invoice.balance === 0 || invoice.status === 'paid'
+                    });
+                }
+            } catch (detailError) {
+                console.error(`[Product Sales] Error fetching invoice ${invoice.invoice_id} details:`, detailError.message);
+                // Still include basic info even if we can't get quantity
+                salesData.push({
+                    invoice_id: invoice.invoice_id,
+                    invoice_number: invoice.invoice_number,
+                    date: invoice.date,
+                    customer_id: invoice.customer_id,
+                    customer_name: invoice.customer_name || 'Walk-in Customer',
+                    quantity: 'N/A',
+                    unit: 'N/A',
+                    rate: 0,
+                    total: 0,
+                    status: invoice.status,
+                    is_paid: invoice.balance === 0 || invoice.status === 'paid'
+                });
+            }
+        }
+        
+        console.log(`[Product Sales] Compiled sales data for ${salesData.length} transactions`);
+        console.log('========== PRODUCT SALES HISTORY FETCHED ==========\n');
+        
+        res.json({
+            success: true,
+            product_id: productId,
+            sales: salesData,
+            total_sales: salesData.length,
+            customer_filter: customer_id || null
+        });
+        
+    } catch (error) {
+        console.error('[Product Sales Error]:', error.response?.data || error.message);
+        res.status(500).json({ 
+            error: 'Failed to fetch product sales history',
+            details: error.response?.data || error.message
+        });
+    }
+});
+
 // ==================== UOM MANAGEMENT ====================
 
 // Initialize UOM handler

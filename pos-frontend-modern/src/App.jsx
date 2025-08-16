@@ -7,6 +7,7 @@ import { Input } from './components/ui/input'
 import { Badge } from './components/ui/badge'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from './components/ui/dialog'
 import { cn } from './lib/utils'
+import ProductSalesHistory from './components/ProductSalesHistory'
 import './App.css'
 
 const TAX_RATE = 0.15 // 15% VAT for KSA
@@ -80,6 +81,8 @@ function App() {
   const [cartRef, setCartRef] = useState(null)
   const [showUnitPopup, setShowUnitPopup] = useState(false)
   const [selectedItemForUnit, setSelectedItemForUnit] = useState(null)
+  const [showProductSales, setShowProductSales] = useState(false)
+  const [selectedProductForSales, setSelectedProductForSales] = useState(null)
 
   // Apply dark mode
   useEffect(() => {
@@ -509,6 +512,7 @@ function App() {
                 </select>
               </div>
 
+
               {/* Zoho Status */}
               {authStatus.authenticated ? (
                 <div className="flex items-center gap-2 text-sm">
@@ -652,9 +656,24 @@ function App() {
                             per PCS
                           </div>
                         </div>
-                        <Button size="icon" variant="ghost" className="h-8 w-8 ml-2">
-                          <Plus className="h-4 w-4" />
-                        </Button>
+                        <div className="flex gap-1">
+                          <Button 
+                            size="icon" 
+                            variant="ghost" 
+                            className="h-8 w-8"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedProductForSales(item);
+                              setShowProductSales(true);
+                            }}
+                            title="View Sales History"
+                          >
+                            <TrendingUp className="h-4 w-4" />
+                          </Button>
+                          <Button size="icon" variant="ghost" className="h-8 w-8">
+                            <Plus className="h-4 w-4" />
+                          </Button>
+                        </div>
                       </div>
                     </CardContent>
                   </Card>
@@ -679,6 +698,19 @@ function App() {
                     </div>
                     
                     <div className="flex items-center gap-4">
+                      <Button 
+                        size="icon" 
+                        variant="ghost" 
+                        className="h-7 w-7"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedProductForSales(item);
+                          setShowProductSales(true);
+                        }}
+                        title="View Sales History"
+                      >
+                        <TrendingUp className="h-3 w-3" />
+                      </Button>
                       {item.stock_on_hand && (
                         <Badge 
                           variant={item.stock_on_hand > 10 ? "success" : "warning"} 
@@ -951,6 +983,18 @@ function App() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Product Sales History Modal */}
+      <ProductSalesHistory 
+        isOpen={showProductSales}
+        onClose={() => {
+          setShowProductSales(false);
+          setSelectedProductForSales(null);
+        }}
+        product={selectedProductForSales}
+        selectedCustomer={selectedCustomer}
+        backendUrl={BACKEND_URL}
+      />
     </div>
   )
 }
