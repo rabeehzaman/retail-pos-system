@@ -573,9 +573,10 @@ function App() {
     if (!items || items.length === 0) return []
     
     return items.filter(item => {
-      const matchesSearch = !debouncedSearch || 
-        item.name?.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
-        item.sku?.toLowerCase().includes(debouncedSearch.toLowerCase())
+      const searchTerm = String(debouncedSearch || '').toLowerCase()
+      const matchesSearch = !searchTerm || 
+        item.name?.toLowerCase().includes(searchTerm) ||
+        item.sku?.toLowerCase().includes(searchTerm)
       const matchesCategory = category === "All" || item.group_name === category
       return matchesSearch && matchesCategory
     })

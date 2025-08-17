@@ -244,9 +244,10 @@ function AppMobile() {
 
   const filteredItems = useMemo(() => {
     return items.filter(item => {
-      const matchesSearch = !search || 
-        item.name?.toLowerCase().includes(search.toLowerCase()) ||
-        item.sku?.toLowerCase().includes(search.toLowerCase())
+      const searchTerm = String(search || '').toLowerCase()
+      const matchesSearch = !searchTerm || 
+        item.name?.toLowerCase().includes(searchTerm) ||
+        item.sku?.toLowerCase().includes(searchTerm)
       const matchesCategory = category === "All" || item.category_name === category
       return matchesSearch && matchesCategory
     })
