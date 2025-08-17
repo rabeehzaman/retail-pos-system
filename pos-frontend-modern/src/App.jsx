@@ -1186,6 +1186,7 @@ function App() {
                   min="1"
                   value={editItemForm.qty}
                   onChange={(e) => setEditItemForm({...editItemForm, qty: parseInt(e.target.value) || 1})}
+                  onFocus={(e) => e.target.select()}
                 />
               </div>
               
@@ -1197,6 +1198,7 @@ function App() {
                   value={editItemForm.price}
                   onChange={(e) => setEditItemForm({...editItemForm, price: parseFloat(e.target.value) || 0})}
                   placeholder="0.00"
+                  onFocus={(e) => e.target.select()}
                 />
               </div>
               

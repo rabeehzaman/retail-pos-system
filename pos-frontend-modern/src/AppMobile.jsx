@@ -10,6 +10,7 @@ import { cn } from './lib/utils'
 import { MobileNavigation } from './components/MobileNavigation'
 import { VirtualProductGrid } from './components/VirtualProductGrid'
 import { MobileCart } from './components/MobileCart'
+import ProductSalesHistory from './components/ProductSalesHistory'
 import { useAutoAuth } from './hooks/useAutoAuth'
 import { useOfflineSync } from './hooks/useOfflineSync'
 import * as localStorage from './utils/localStorage'
@@ -85,6 +86,8 @@ function AppMobile() {
   const [editItemForm, setEditItemForm] = useState({ unit: '', price: 0, qty: 1 })
   const [showUnitPopup, setShowUnitPopup] = useState(false)
   const [selectedItemForUnit, setSelectedItemForUnit] = useState(null)
+  const [showProductSales, setShowProductSales] = useState(false)
+  const [selectedProductForSales, setSelectedProductForSales] = useState(null)
   const gridContainerRef = useRef(null)
   const [containerDimensions, setContainerDimensions] = useState({ width: 0, height: 0 })
   
@@ -318,6 +321,11 @@ function AppMobile() {
     setShowUnitPopup(true)
   }
 
+  const handleProductSales = (item) => {
+    setSelectedProductForSales(item)
+    setShowProductSales(true)
+  }
+
   const updateCartQuantity = (itemId, quantity) => {
     if (quantity <= 0) {
       setCart(cart.filter(i => i.id !== itemId))
@@ -490,6 +498,7 @@ function AppMobile() {
                     containerHeight={containerDimensions.height || 600}
                     containerWidth={containerDimensions.width || window.innerWidth}
                     onLongPress={handleLongPressProduct}
+                    onProductSales={handleProductSales}
                   />
                 </div>
               )}
@@ -751,6 +760,7 @@ function AppMobile() {
                   min="1"
                   value={editItemForm.qty}
                   onChange={(e) => setEditItemForm({...editItemForm, qty: parseInt(e.target.value) || 1})}
+                  onFocus={(e) => e.target.select()}
                 />
               </div>
               
@@ -762,6 +772,7 @@ function AppMobile() {
                   value={editItemForm.price}
                   onChange={(e) => setEditItemForm({...editItemForm, price: parseFloat(e.target.value) || 0})}
                   placeholder="0.00"
+                  onFocus={(e) => e.target.select()}
                 />
               </div>
               
@@ -790,6 +801,18 @@ function AppMobile() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Product Sales History Modal */}
+      <ProductSalesHistory 
+        isOpen={showProductSales}
+        onClose={() => {
+          setShowProductSales(false);
+          setSelectedProductForSales(null);
+        }}
+        product={selectedProductForSales}
+        selectedCustomer={selectedCustomer}
+        backendUrl={BACKEND_URL}
+      />
     </div>
   )
 }
