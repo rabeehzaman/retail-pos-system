@@ -36,10 +36,11 @@ const ProductCard = memo(({ data, columnIndex, rowIndex, style }) => {
   const { items, columnCount, onAddToCart, formatCurrency, taxMode, onProductSales, selectedIndex, onLongPress } = data
   const index = rowIndex * columnCount + columnIndex
   const item = items[index]
+  
+  if (!item) return <div style={style} />
+  
   const isSelected = index === selectedIndex
   const [isLongPressing, setIsLongPressing] = useState(false)
-
-  if (!item) return <div style={style} />
 
   const price = taxMode === "inclusive" 
     ? (item.price || item.rate || item.selling_price || 0) * 1.15 
@@ -260,9 +261,10 @@ export function VirtualProductGrid({
 const ListItem = memo(({ index, style, data }) => {
   const { items, onAddToCart, formatCurrency, taxMode, onProductSales, onLongPress } = data
   const item = items[index]
-  const [isLongPressing, setIsLongPressing] = useState(false)
-
+  
   if (!item) return <div style={style} />
+  
+  const [isLongPressing, setIsLongPressing] = useState(false)
 
   const price = taxMode === "inclusive" 
     ? (item.price || item.rate || item.selling_price || 0) * 1.15 
