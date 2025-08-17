@@ -376,12 +376,36 @@ function AppMobile() {
     setShowCheckoutDialog(true)
     
     try {
-      const lineItems = cart.map(item => ({
-        item_id: item.item_id,
-        quantity: item.quantity,
-        rate: item.price,
-        unit: UNIT_CONVERSION_MAP[item.unit] || UNIT_CONVERSION_MAP.PIECES
-      }))
+      const lineItems = cart.map(item => {
+        const lineItem = {
+          item_id: item.item_id,
+          quantity: item.quantity,
+          rate: item.price,
+          tax_id: item.tax_id || "9465000000007061" // Default tax ID
+        };
+        
+        // Handle unit conversion similar to desktop version
+        if (item.unit === 'PCS') {
+          // Get the appropriate conversion ID based on stored unit
+          const conversionId = UNIT_CONVERSION_MAP[item.storedUnit?.toUpperCase()];
+          
+          if (conversionId) {
+            lineItem.unit = 'PCS';
+            lineItem.unit_conversion_id = conversionId;
+          } else {
+            // Fallback if pattern not mapped yet
+            lineItem.unit = item.storedUnit || item.unit;
+          }
+        } else if (item.unit === 'CTN') {
+          // For cartons, use the stored unit (no conversion ID needed)
+          lineItem.unit = item.storedUnit || item.unit;
+        } else {
+          // For other units, use as-is
+          lineItem.unit = item.unit;
+        }
+        
+        return lineItem;
+      })
 
       const subtotal = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0)
       
