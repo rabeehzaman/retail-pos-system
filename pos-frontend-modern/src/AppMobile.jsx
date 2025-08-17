@@ -91,6 +91,10 @@ function AppMobile() {
   const gridContainerRef = useRef(null)
   const [containerDimensions, setContainerDimensions] = useState({ width: 0, height: 0 })
   
+  // Branch selection state
+  const [branches, setBranches] = useState([])
+  const [selectedBranch, setSelectedBranch] = useState(() => localStorage.getSelectedBranch())
+  
   // Use performance optimization hooks
   const { authStatus, authError, login, logout, checkStoredAuth } = useAutoAuth(BACKEND_URL)
   const { 
@@ -208,6 +212,19 @@ function AppMobile() {
     }
   }, [authStatus.authenticated])
   
+  const fetchBranches = useCallback(async () => {
+    try {
+      const response = await axios.get(`${BACKEND_URL}/api/branches`)
+      if (response.data.success) {
+        setBranches(response.data.branches || [])
+        console.log('Branches loaded:', response.data.branches?.length || 0)
+      }
+    } catch (error) {
+      console.error('Failed to fetch branches:', error)
+      setBranches([]) // Set empty array if branches not available
+    }
+  }, [])
+  
   const loadData = useCallback(async () => {
     // Load products (from cache or API)
     const products = await syncProducts()
@@ -216,7 +233,12 @@ function AppMobile() {
     // Load customers (from cache or API)
     const customerList = await syncCustomers()
     setCustomers(customerList || [])
-  }, [syncProducts, syncCustomers])
+    
+    // Load branches (only if authenticated)
+    if (authStatus.authenticated) {
+      await fetchBranches()
+    }
+  }, [syncProducts, syncCustomers, authStatus.authenticated, fetchBranches])
   
   const handleLogin = useCallback(async () => {
     const success = await login()
@@ -231,6 +253,8 @@ function AppMobile() {
     setCustomers([])
     setCart([])
     setSelectedCustomer(null)
+    setBranches([])
+    setSelectedBranch(null)
     await db.clearAllData()
   }, [logout])
 
@@ -364,7 +388,8 @@ function AppMobile() {
       const transaction = {
         customer_id: selectedCustomer,
         line_items: lineItems,
-        is_inclusive_tax: taxMode === "inclusive"
+        is_inclusive_tax: taxMode === "inclusive",
+        branch_id: selectedBranch?.branch_id || null
       }
       
       // Use offline-capable save transaction
@@ -616,6 +641,44 @@ function AppMobile() {
                 </div>
               </CardContent>
             </Card>
+
+            {/* Branch Selection Card */}
+            {branches.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">Branch/Location</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm">Current Branch</span>
+                  </div>
+                  <select
+                    value={selectedBranch?.branch_id || ''}
+                    onChange={(e) => {
+                      const branchId = e.target.value
+                      const branch = branches.find(b => b.branch_id === branchId) || null
+                      setSelectedBranch(branch)
+                      localStorage.saveSelectedBranch(branch)
+                    }}
+                    className="w-full px-3 py-2 border rounded-md bg-background"
+                  >
+                    <option value="">No Branch Selected</option>
+                    {branches.map(branch => (
+                      <option key={branch.branch_id} value={branch.branch_id}>
+                        {branch.branch_name}
+                      </option>
+                    ))}
+                  </select>
+                  {selectedBranch && (
+                    <div className="p-2 bg-muted rounded-md">
+                      <p className="text-xs text-muted-foreground">
+                        Selected: {selectedBranch.branch_name}
+                      </p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
 
             <Card>
               <CardHeader>

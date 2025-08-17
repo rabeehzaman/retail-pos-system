@@ -92,6 +92,11 @@ function App() {
   // UI state
   const [isCartCollapsed, setIsCartCollapsed] = useState(false)
   const [selectedProductIndex, setSelectedProductIndex] = useState(-1)
+  const [showSettingsDialog, setShowSettingsDialog] = useState(false)
+  
+  // Branch selection state
+  const [branches, setBranches] = useState([])
+  const [selectedBranch, setSelectedBranch] = useState(() => localStorage.getSelectedBranch())
 
   // Container dimensions for virtual scrolling
   const gridContainerRef = useRef(null)
@@ -225,6 +230,7 @@ function App() {
       if (response.data.authenticated) {
         fetchItems()
         fetchCustomers()
+        fetchBranches()
       }
     } catch (error) {
       console.error('Auth check failed:', error)
@@ -255,6 +261,19 @@ function App() {
       setCustomers(customers || [])
     } catch (error) {
       console.error('Failed to fetch customers:', error)
+    }
+  }
+
+  const fetchBranches = async () => {
+    try {
+      const response = await axios.get(`${BACKEND_URL}/api/branches`)
+      if (response.data.success) {
+        setBranches(response.data.branches || [])
+        console.log('Branches loaded:', response.data.branches?.length || 0)
+      }
+    } catch (error) {
+      console.error('Failed to fetch branches:', error)
+      setBranches([]) // Set empty array if branches not available
     }
   }
 
@@ -515,7 +534,8 @@ function App() {
       const invoiceData = {
         customer_id: selectedCustomer,
         line_items: lineItems,
-        is_inclusive_tax: taxMode === "inclusive"
+        is_inclusive_tax: taxMode === "inclusive",
+        branch_id: selectedBranch?.branch_id || null
       }
 
       // Use offline sync for invoice creation
@@ -755,6 +775,7 @@ function App() {
                       if (authStatus.authenticated) {
                         fetchItems()
                         fetchCustomers()
+                        fetchBranches()
                       } else {
                         syncData()
                       }
@@ -808,6 +829,17 @@ function App() {
                       </div>
                     </div>
                   </div>
+                  
+                  {/* Settings Button */}
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setShowSettingsDialog(true)}
+                    className="interactive-scale h-8 w-8"
+                    title="Settings"
+                  >
+                    <Settings className="h-4 w-4" />
+                  </Button>
                 </div>
               </div>
             </div>
@@ -1224,6 +1256,115 @@ function App() {
               disabled={!editItemForm.unit || !editItemForm.price}
             >
               {cart.some(i => i.id === selectedItemForUnit?.id) ? 'Update Cart' : 'Add to Cart'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Settings Modal */}
+      <Dialog open={showSettingsDialog} onOpenChange={setShowSettingsDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Settings</DialogTitle>
+            <DialogDescription>
+              Configure your POS settings
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-6">
+            {/* Branch Selection */}
+            {branches.length > 0 && (
+              <div className="space-y-3">
+                <label className="text-sm font-medium">Branch/Location</label>
+                <select
+                  value={selectedBranch?.branch_id || ''}
+                  onChange={(e) => {
+                    const branchId = e.target.value
+                    const branch = branches.find(b => b.branch_id === branchId) || null
+                    setSelectedBranch(branch)
+                    localStorage.saveSelectedBranch(branch)
+                  }}
+                  className="w-full px-3 py-2 border rounded-md bg-background"
+                >
+                  <option value="">No Branch Selected</option>
+                  {branches.map(branch => (
+                    <option key={branch.branch_id} value={branch.branch_id}>
+                      {branch.branch_name}
+                    </option>
+                  ))}
+                </select>
+                {selectedBranch && (
+                  <p className="text-xs text-muted-foreground">
+                    Current: {selectedBranch.branch_name}
+                  </p>
+                )}
+              </div>
+            )}
+            
+            {/* Tax Mode */}
+            <div className="space-y-3">
+              <label className="text-sm font-medium">Tax Mode</label>
+              <select
+                value={taxMode}
+                onChange={(e) => {
+                  setTaxMode(e.target.value)
+                  localStorage.saveTaxMode(e.target.value)
+                }}
+                className="w-full px-3 py-2 border rounded-md bg-background"
+              >
+                <option value="exclusive">Tax Exclusive</option>
+                <option value="inclusive">Tax Inclusive</option>
+              </select>
+            </div>
+            
+            {/* View Mode */}
+            <div className="space-y-3">
+              <label className="text-sm font-medium">View Mode</label>
+              <div className="flex gap-2">
+                <Button
+                  variant={viewMode === "grid" ? "default" : "outline"}
+                  onClick={() => {
+                    setViewMode("grid")
+                    localStorage.saveViewMode("grid")
+                  }}
+                  className="flex-1"
+                >
+                  <Grid3x3 className="mr-2 h-4 w-4" />
+                  Grid
+                </Button>
+                <Button
+                  variant={viewMode === "list" ? "default" : "outline"}
+                  onClick={() => {
+                    setViewMode("list")
+                    localStorage.saveViewMode("list")
+                  }}
+                  className="flex-1"
+                >
+                  <List className="mr-2 h-4 w-4" />
+                  List
+                </Button>
+              </div>
+            </div>
+            
+            {/* Dark Mode */}
+            <div className="flex items-center justify-between">
+              <label className="text-sm font-medium">Dark Mode</label>
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => {
+                  setDark(!dark)
+                  localStorage.saveTheme(!dark)
+                }}
+              >
+                {dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+              </Button>
+            </div>
+          </div>
+          
+          <DialogFooter>
+            <Button onClick={() => setShowSettingsDialog(false)}>
+              Close
             </Button>
           </DialogFooter>
         </DialogContent>

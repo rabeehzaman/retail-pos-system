@@ -230,6 +230,7 @@ app.get('/', (req, res) => {
                 <li>/auth/login - Start OAuth flow</li>
                 <li>/api/items - Fetch products (requires auth)</li>
                 <li>/api/customers - Fetch customers (requires auth)</li>
+                <li>/api/branches - Fetch branches (requires auth)</li>
                 <li>/api/invoices - Create invoice (POST, requires auth)</li>
             </ul>
         </body>
@@ -758,17 +759,62 @@ app.get('/api/customers', async (req, res) => {
     }
 });
 
+// Get branches from Zoho Books
+app.get('/api/branches', async (req, res) => {
+    console.log('\n========== FETCHING BRANCHES ==========');
+    try {
+        await ensureValidToken();
+        
+        const response = await axios.get(`${ZOHO_BOOKS_API_URL}/branches`, {
+            headers: {
+                'Authorization': `Zoho-oauthtoken ${accessToken}`
+            },
+            params: {
+                organization_id: process.env.ZOHO_ORGANIZATION_ID
+            }
+        });
+        
+        const branches = response.data.branches || [];
+        console.log(`[Branches] Retrieved ${branches.length} branches from Zoho Books`);
+        
+        res.json({ 
+            branches: branches,
+            success: true 
+        });
+        
+    } catch (error) {
+        console.error('[Branches Error] Failed to fetch branches:', error.response?.data || error.message);
+        
+        // If branches are not enabled, return empty array with note
+        if (error.response?.status === 400 || error.response?.status === 404) {
+            console.log('[Branches] Branches feature may not be enabled for this organization');
+            res.json({ 
+                branches: [], 
+                success: true,
+                note: 'Branches feature not available or not enabled'
+            });
+        } else {
+            res.status(500).json({ 
+                error: 'Failed to fetch branches',
+                message: error.response?.data?.message || error.message,
+                success: false
+            });
+        }
+    }
+});
+
 // Create invoice (main POS sale endpoint)
 app.post('/api/invoices', async (req, res) => {
     console.log('\n========== CREATING INVOICE ==========');
     try {
         await ensureValidToken();
         
-        const { customer_id, line_items, payment_mode, notes } = req.body;
+        const { customer_id, line_items, payment_mode, notes, branch_id } = req.body;
         
         console.log('[Invoice] Request details:');
         console.log(`  - Customer ID: ${customer_id || 'Walk-in'}`);
         console.log(`  - Payment mode: ${payment_mode}`);
+        console.log(`  - Branch ID: ${branch_id || 'Not specified'}`);
         console.log(`  - Line items count: ${line_items.length}`);
         
         // Log each line item transformation
@@ -822,6 +868,12 @@ app.post('/api/invoices', async (req, res) => {
         // Only add customer_id if a customer is selected (omit for walk-in customers)
         if (customer_id) {
             invoiceData.customer_id = customer_id;
+        }
+        
+        // Add branch_id if specified
+        if (branch_id) {
+            invoiceData.branch_id = branch_id;
+            console.log(`[Invoice] Including branch ID: ${branch_id}`);
         }
         
         console.log('\n[Invoice] Sending to Zoho Books:');
@@ -1244,6 +1296,7 @@ app.listen(PORT, () => {
     
     - GET  /api/items        - Fetch products
     - GET  /api/customers    - Fetch customers
+    - GET  /api/branches     - Fetch branches
     - POST /api/invoices     - Create invoice/sale
     - GET  /api/taxes        - Get tax rates
     ========================================

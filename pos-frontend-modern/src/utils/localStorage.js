@@ -7,7 +7,8 @@ const STORAGE_KEYS = {
   LAST_CUSTOMER: 'tmr_pos_last_customer',
   LAST_SYNC: 'tmr_pos_last_sync',
   AUTH_STATUS: 'tmr_pos_auth_status',
-  USER_PREFS: 'tmr_pos_user_prefs'
+  USER_PREFS: 'tmr_pos_user_prefs',
+  SELECTED_BRANCH: 'tmr_pos_selected_branch'
 }
 
 // Theme preferences
@@ -119,6 +120,25 @@ export const getAuthStatus = () => {
   } catch (e) {
     console.error('Failed to get auth status:', e)
     return { authenticated: false }
+  }
+}
+
+// Selected branch
+export const saveSelectedBranch = (branch) => {
+  try {
+    localStorage.setItem(STORAGE_KEYS.SELECTED_BRANCH, JSON.stringify(branch))
+  } catch (e) {
+    console.error('Failed to save selected branch:', e)
+  }
+}
+
+export const getSelectedBranch = () => {
+  try {
+    const branch = localStorage.getItem(STORAGE_KEYS.SELECTED_BRANCH)
+    return branch ? JSON.parse(branch) : null
+  } catch (e) {
+    console.error('Failed to get selected branch:', e)
+    return null
   }
 }
 
