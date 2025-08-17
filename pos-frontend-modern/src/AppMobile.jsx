@@ -11,6 +11,8 @@ import { MobileNavigation } from './components/MobileNavigation'
 import { VirtualProductGrid } from './components/VirtualProductGrid'
 import { MobileCart } from './components/MobileCart'
 import ProductSalesHistory from './components/ProductSalesHistory'
+import Toast from './components/Toast'
+import InvoiceSuccessModal from './components/InvoiceSuccessModal'
 import { useAutoAuth } from './hooks/useAutoAuth'
 import { useOfflineSync } from './hooks/useOfflineSync'
 import * as localStorage from './utils/localStorage'
@@ -94,6 +96,11 @@ function AppMobile() {
   // Branch selection state
   const [branches, setBranches] = useState([])
   const [selectedBranch, setSelectedBranch] = useState(() => localStorage.getSelectedBranch())
+  
+  // Toast and Success Modal state
+  const [toast, setToast] = useState(null)
+  const [showSuccessModal, setShowSuccessModal] = useState(false)
+  const [isDownloading, setIsDownloading] = useState(false)
   
   // Use performance optimization hooks
   const { authStatus, authError, login, logout, checkStoredAuth } = useAutoAuth(BACKEND_URL)
@@ -258,6 +265,63 @@ function AppMobile() {
     await db.clearAllData()
   }, [logout])
 
+  // Download invoice PDF
+  const downloadInvoice = useCallback(async (invoiceId, invoiceNumber) => {
+    try {
+      console.log('Downloading invoice:', invoiceId)
+      setIsDownloading(true)
+      
+      const response = await axios.get(`${BACKEND_URL}/api/invoices/${invoiceId}/download`, {
+        responseType: 'blob'
+      })
+      
+      // Check if response is actually a PDF
+      if (response.data.type && !response.data.type.includes('pdf')) {
+        throw new Error('Response is not a PDF file')
+      }
+      
+      // Create download link
+      const url = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }))
+      const link = document.createElement('a')
+      link.href = url
+      link.setAttribute('download', `Invoice_${invoiceNumber}.pdf`)
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      window.URL.revokeObjectURL(url)
+      
+      console.log(`Invoice ${invoiceNumber} downloaded successfully`)
+      
+      // Show success toast
+      setToast({
+        message: `Invoice ${invoiceNumber} downloaded successfully!`,
+        type: 'success',
+        duration: 3000
+      })
+      
+    } catch (error) {
+      console.error('Failed to download invoice:', error)
+      const errorMsg = error.response?.status === 404 
+        ? 'Invoice PDF not found. It may still be generating.' 
+        : error.response?.status === 401 
+        ? 'Authentication error. Please refresh and try again.'
+        : 'Failed to download invoice PDF. Please try again.'
+      
+      // Show error toast
+      setToast({
+        message: errorMsg,
+        type: 'error',
+        duration: 5000
+      })
+    } finally {
+      setIsDownloading(false)
+    }
+  }, [BACKEND_URL])
+
+  const showToast = useCallback((message, type = 'info', duration = 5000) => {
+    setToast({ message, type, duration })
+  }, [])
+
   const categories = useMemo(() => {
     const cats = new Set(["All"])
     items.forEach(item => {
@@ -289,6 +353,7 @@ function AppMobile() {
       setCart([...cart, {
         ...item,
         quantity: 1,
+        item_id: item.item_id || item.id,
         price: item.price || item.rate || item.selling_price || 0
       }])
     }
@@ -315,6 +380,7 @@ function AppMobile() {
         } else {
           const newItem = {
             id: item.id,
+            item_id: item.item_id || item.id,
             name: item.name,
             price: parseFloat(price),
             qty: qty,
@@ -379,7 +445,7 @@ function AppMobile() {
       const lineItems = cart.map(item => {
         const lineItem = {
           item_id: item.item_id,
-          quantity: item.quantity,
+          quantity: item.qty || item.quantity || 1,
           rate: item.price,
           tax_id: item.tax_id || "9465000000007061" // Default tax ID
         };
@@ -407,7 +473,7 @@ function AppMobile() {
         return lineItem;
       })
 
-      const subtotal = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0)
+      const subtotal = cart.reduce((sum, item) => sum + (item.price * (item.qty || item.quantity || 1)), 0)
       
       const transaction = {
         customer_id: selectedCustomer,
@@ -421,24 +487,70 @@ function AppMobile() {
       
       if (result.pending) {
         // Transaction saved offline
-        setLastInvoice({
+        const pendingInvoice = {
           invoice_number: `PENDING-${result.localId}`,
           total: subtotal * (taxMode === "inclusive" ? 1 : 1.15),
           pending: true
-        })
+        }
+        setLastInvoice(pendingInvoice)
+        
+        // Show success modal for offline invoice
+        setShowCheckoutDialog(false)
+        setShowSuccessModal(true)
+        
+        // Show toast notification
+        showToast('Invoice saved offline! Will sync when connected.', 'warning', 4000)
+        
       } else {
-        setLastInvoice(result)
+        // Online invoice created successfully
+        const invoiceData = {
+          invoice_id: result.invoice?.invoice_id || result.invoice_id,
+          invoice_number: result.invoice?.invoice_number || result.invoice_number,
+          total: result.invoice?.total || result.total,
+          status: result.invoice?.status || result.status
+        }
+        setLastInvoice(invoiceData)
+        
+        // Show success modal
+        setShowCheckoutDialog(false)
+        setShowSuccessModal(true)
+        
+        // Show success toast
+        showToast(`Invoice ${invoiceData.invoice_number} created successfully!`, 'success', 3000)
+        
+        // Auto-download PDF after 2 seconds (like desktop)
+        setTimeout(async () => {
+          if (invoiceData.invoice_id) {
+            await downloadInvoice(invoiceData.invoice_id, invoiceData.invoice_number)
+          }
+        }, 2000)
       }
       
       clearCart()
-      setShowCheckoutDialog(false)
-      setActiveTab('products')
     } catch (error) {
       console.error('Checkout failed:', error)
-      alert(isOffline ? 'Transaction saved offline. Will sync when connection is restored.' : 'Checkout failed. Please try again.')
       setShowCheckoutDialog(false)
+      
+      // Show error toast instead of alert
+      const errorMessage = isOffline 
+        ? 'Transaction saved offline. Will sync when connection is restored.' 
+        : 'Checkout failed. Please try again.'
+      
+      showToast(errorMessage, 'error', 5000)
     }
   }
+
+  const handleNewSale = useCallback(() => {
+    setShowSuccessModal(false)
+    setActiveTab('products')
+    setLastInvoice(null)
+  }, [])
+
+  const handleSuccessDownload = useCallback(() => {
+    if (lastInvoice && !lastInvoice.pending) {
+      downloadInvoice(lastInvoice.invoice_id, lastInvoice.invoice_number)
+    }
+  }, [lastInvoice, downloadInvoice])
 
   const renderContent = () => {
     switch (activeTab) {
@@ -901,6 +1013,27 @@ function AppMobile() {
         selectedCustomer={selectedCustomer}
         backendUrl={BACKEND_URL}
       />
+
+      {/* Invoice Success Modal */}
+      <InvoiceSuccessModal
+        isOpen={showSuccessModal}
+        onClose={() => setShowSuccessModal(false)}
+        invoice={lastInvoice}
+        formatCurrency={formatCurrency}
+        onDownload={handleSuccessDownload}
+        onNewSale={handleNewSale}
+        isDownloading={isDownloading}
+      />
+
+      {/* Toast Notification */}
+      {toast && (
+        <Toast
+          message={toast.message}
+          type={toast.type}
+          duration={toast.duration}
+          onClose={() => setToast(null)}
+        />
+      )}
     </div>
   )
 }
