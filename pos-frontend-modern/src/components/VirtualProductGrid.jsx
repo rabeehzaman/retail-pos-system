@@ -5,7 +5,6 @@ import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
 import { Button } from './ui/button'
 import { Badge } from './ui/badge'
 import { cn } from '../lib/utils'
-import { canHandleLargeLists, getOptimalBatchSize } from '../utils/deviceDetection'
 import { useLongPress } from '../hooks/useLongPress'
 
 // Loading skeleton component
@@ -146,17 +145,8 @@ export function VirtualProductGrid({
   selectedIndex = -1,
   onLongPress = null
 }) {
-  // Check if device can handle large lists
-  const [currentPage, setCurrentPage] = useState(1)
-  const canUseVirtualScroll = canHandleLargeLists()
-  const batchSize = getOptimalBatchSize()
-  const shouldPaginate = !canUseVirtualScroll && items.length > batchSize
-  
-  // Calculate paginated items if needed
-  const displayItems = shouldPaginate 
-    ? items.slice((currentPage - 1) * batchSize, currentPage * batchSize)
-    : items
-  const totalPages = shouldPaginate ? Math.ceil(items.length / batchSize) : 1
+  // Always use virtual scrolling - no pagination needed
+  const displayItems = items
   // Calculate grid dimensions based on screen size with fallback
   const actualWidth = containerWidth || window.innerWidth
   const actualHeight = containerHeight || 600
@@ -229,46 +219,23 @@ export function VirtualProductGrid({
           onAddToCart={onAddToCart}
           formatCurrency={formatCurrency}
           taxMode={taxMode}
-          height={shouldPaginate ? actualHeight - 60 : actualHeight}
+          height={actualHeight}
           width={actualWidth}
           onProductSales={onProductSales}
           onLongPress={onLongPress}
         />
-        {shouldPaginate && (
-          <div className="flex items-center justify-between p-4 border-t">
-            <Button 
-              variant="outline" 
-              size="sm"
-              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-              disabled={currentPage === 1}
-            >
-              Previous
-            </Button>
-            <span className="text-sm text-muted-foreground">
-              Page {currentPage} of {totalPages} ({items.length} products)
-            </span>
-            <Button 
-              variant="outline" 
-              size="sm"
-              onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-              disabled={currentPage === totalPages}
-            >
-              Next
-            </Button>
-          </div>
-        )}
       </>
     )
   }
 
-  // Grid view with virtual scrolling or pagination
+  // Grid view with virtual scrolling
   return (
     <>
       <Grid
         className="scrollbar-thin"
         columnCount={columnCount}
         columnWidth={columnWidth}
-        height={shouldPaginate ? actualHeight - 60 : actualHeight}
+        height={actualHeight}
         rowCount={rowCount}
         rowHeight={rowHeight}
         width={actualWidth}
@@ -285,29 +252,6 @@ export function VirtualProductGrid({
       >
         {ProductCard}
       </Grid>
-      {shouldPaginate && (
-        <div className="flex items-center justify-between p-4 border-t bg-background">
-          <Button 
-            variant="outline" 
-            size="sm"
-            onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-            disabled={currentPage === 1}
-          >
-            Previous
-          </Button>
-          <span className="text-sm text-muted-foreground">
-            Page {currentPage} of {totalPages} ({items.length} products)
-          </span>
-          <Button 
-            variant="outline" 
-            size="sm"
-            onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-            disabled={currentPage === totalPages}
-          >
-            Next
-          </Button>
-        </div>
-      )}
     </>
   )
 }
