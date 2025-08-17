@@ -82,6 +82,9 @@ function AppMobile() {
   const [showSettingsDialog, setShowSettingsDialog] = useState(false)
   const [items, setItems] = useState([])
   const [customers, setCustomers] = useState([])
+  const [editItemForm, setEditItemForm] = useState({ unit: '', price: 0, qty: 1 })
+  const [showUnitPopup, setShowUnitPopup] = useState(false)
+  const [selectedItemForUnit, setSelectedItemForUnit] = useState(null)
   const gridContainerRef = useRef(null)
   const [containerDimensions, setContainerDimensions] = useState({ width: 0, height: 0 })
   
@@ -263,6 +266,58 @@ function AppMobile() {
     }
   }
 
+  const addToCartWithDetails = (item, unit, qty, price, isEdit = false) => {
+    if (isEdit) {
+      // Update existing cart item
+      setCart(prevCart => prevCart.map(i => 
+        i.id === item.id && i.unit === item.unit
+          ? { ...i, unit: unit, qty: qty, price: parseFloat(price) }
+          : i
+      ))
+    } else {
+      setCart(prevCart => {
+        const existingItem = prevCart.find(i => i.id === item.id && i.unit === unit)
+        
+        if (existingItem) {
+          return prevCart.map(i => 
+            i.id === item.id && i.unit === unit
+              ? { ...i, qty: i.qty + qty }
+              : i
+          )
+        } else {
+          const newItem = {
+            id: item.id,
+            name: item.name,
+            price: parseFloat(price),
+            qty: qty,
+            unit: unit,
+            storedUnit: item.storedUnit || item.unit,
+            tax_id: item.tax_id || "",
+            tax_percentage: item.tax_percentage || 0
+          }
+          
+          return [...prevCart, newItem]
+        }
+      })
+    }
+    
+    setShowUnitPopup(false)
+    setSelectedItemForUnit(null)
+  }
+
+  const handleLongPressProduct = (item) => {
+    // Set up the unit form with default values for new item
+    setSelectedItemForUnit(item)
+    const basePrice = item.price || item.rate || item.selling_price || 0
+    const adjustedPrice = taxMode === "inclusive" ? basePrice * 1.15 : basePrice
+    setEditItemForm({
+      unit: 'PCS',
+      price: adjustedPrice,
+      qty: 1
+    })
+    setShowUnitPopup(true)
+  }
+
   const updateCartQuantity = (itemId, quantity) => {
     if (quantity <= 0) {
       setCart(cart.filter(i => i.id !== itemId))
@@ -434,6 +489,7 @@ function AppMobile() {
                     isLoading={syncStatus === 'syncing' && items.length === 0}
                     containerHeight={containerDimensions.height || 600}
                     containerWidth={containerDimensions.width || window.innerWidth}
+                    onLongPress={handleLongPressProduct}
                   />
                 </div>
               )}
@@ -643,6 +699,95 @@ function AppMobile() {
           <div className="flex items-center justify-center py-6">
             <RefreshCw className="h-8 w-8 animate-spin text-primary" />
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Unit Selection Dialog */}
+      <Dialog open={showUnitPopup} onOpenChange={() => setShowUnitPopup(false)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              {cart.some(i => i.id === selectedItemForUnit?.id) ? 'Edit Cart Item' : 'Add Item to Cart'}
+            </DialogTitle>
+            <DialogDescription>
+              {selectedItemForUnit && `Configure ${selectedItemForUnit.name} ${cart.some(i => i.id === selectedItemForUnit?.id) ? 'in your cart' : 'before adding to cart'}`}
+            </DialogDescription>
+          </DialogHeader>
+          
+          {selectedItemForUnit && (
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Unit</label>
+                <div className="flex gap-2">
+                  <Button
+                    variant={editItemForm.unit === 'PCS' ? 'default' : 'outline'}
+                    onClick={() => {
+                      const basePrice = selectedItemForUnit.price || selectedItemForUnit.rate || selectedItemForUnit.selling_price || 0
+                      const adjustedPrice = taxMode === "inclusive" ? basePrice * 1.15 : basePrice
+                      setEditItemForm({...editItemForm, unit: 'PCS', price: adjustedPrice})
+                    }}
+                    className="flex-1"
+                  >
+                    PCS
+                  </Button>
+                  <Button
+                    variant={editItemForm.unit === 'CTN' ? 'default' : 'outline'}
+                    onClick={() => {
+                      const basePrice = selectedItemForUnit.price || selectedItemForUnit.rate || selectedItemForUnit.selling_price || 0
+                      const adjustedPrice = taxMode === "inclusive" ? (basePrice * 12) * 1.15 : basePrice * 12
+                      setEditItemForm({...editItemForm, unit: 'CTN', price: adjustedPrice})
+                    }}
+                    className="flex-1"
+                  >
+                    CTN
+                  </Button>
+                </div>
+              </div>
+              
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Quantity</label>
+                <Input
+                  type="number"
+                  min="1"
+                  value={editItemForm.qty}
+                  onChange={(e) => setEditItemForm({...editItemForm, qty: parseInt(e.target.value) || 1})}
+                />
+              </div>
+              
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Price per Unit (SAR)</label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  value={editItemForm.price}
+                  onChange={(e) => setEditItemForm({...editItemForm, price: parseFloat(e.target.value) || 0})}
+                  placeholder="0.00"
+                />
+              </div>
+              
+              <div className="bg-muted p-3 rounded-lg">
+                <div className="text-sm font-medium mb-1">Summary:</div>
+                <div className="text-sm text-muted-foreground">
+                  {editItemForm.qty} {editItemForm.unit} × {formatCurrency(editItemForm.price)} = {formatCurrency(editItemForm.qty * editItemForm.price)}
+                </div>
+              </div>
+            </div>
+          )}
+          
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowUnitPopup(false)}>
+              Cancel
+            </Button>
+            <Button 
+              onClick={() => {
+                const isEditingExisting = cart.some(i => i.id === selectedItemForUnit.id)
+                addToCartWithDetails(selectedItemForUnit, editItemForm.unit || 'PCS', editItemForm.qty || 1, editItemForm.price || 0, isEditingExisting)
+              }}
+              disabled={!editItemForm.unit || !editItemForm.price}
+            >
+              {cart.some(i => i.id === selectedItemForUnit?.id) ? 'Update Cart' : 'Add to Cart'}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
