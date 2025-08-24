@@ -8,6 +8,7 @@ import { Badge } from './components/ui/badge'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from './components/ui/dialog'
 import { cn } from './lib/utils'
 import ProductSalesHistory from './components/ProductSalesHistory'
+import ProductPurchaseHistory from './components/ProductPurchaseHistory'
 import { VirtualProductGrid } from './components/VirtualProductGrid'
 import { useOfflineSync } from './hooks/useOfflineSync'
 import * as db from './utils/db'
@@ -63,6 +64,19 @@ function formatCurrency(n) {
   return new Intl.NumberFormat("en-SA", { style: "currency", currency: CURRENCY }).format(num)
 }
 
+// Helper function to check if a unit is convertible
+function isConvertibleUnit(item) {
+  // Check if item has hasConversion flag (from backend)
+  if (item.hasConversion === false) return false;
+  
+  // Check for non-convertible units by storedUnit
+  const nonConvertibleUnits = ['PIECES', 'RAFTHA', 'OUTER', 'CTN'];
+  if (nonConvertibleUnits.includes(item.storedUnit?.toUpperCase())) return false;
+  
+  // Default to convertible if no clear indication
+  return true;
+}
+
 function App() {
   // Load saved preferences
   const [dark, setDark] = useState(() => localStorage.getTheme())
@@ -88,6 +102,8 @@ function App() {
   const [selectedItemForUnit, setSelectedItemForUnit] = useState(null)
   const [showProductSales, setShowProductSales] = useState(false)
   const [selectedProductForSales, setSelectedProductForSales] = useState(null)
+  const [showProductPurchases, setShowProductPurchases] = useState(false)
+  const [selectedProductForPurchases, setSelectedProductForPurchases] = useState(null)
 
   // UI state
   const [isCartCollapsed, setIsCartCollapsed] = useState(false)
@@ -424,8 +440,12 @@ function App() {
     setSelectedItemForUnit(item)
     const basePrice = item.price || item.rate || item.selling_price || 0
     const adjustedPrice = taxMode === "inclusive" ? basePrice * 1.15 : basePrice
+    
+    // Use stored unit for non-convertible items, PCS for convertible items
+    const defaultUnit = isConvertibleUnit(item) ? 'PCS' : (item.storedUnit || item.defaultUnit || 'PCS')
+    
     setEditItemForm({
-      unit: 'PCS',
+      unit: defaultUnit,
       price: adjustedPrice,
       qty: 1
     })
@@ -966,6 +986,10 @@ function App() {
                   setSelectedProductForSales(item);
                   setShowProductSales(true);
                 }}
+                onProductPurchases={(item) => {
+                  setSelectedProductForPurchases(item);
+                  setShowProductPurchases(true);
+                }}
                 onLongPress={handleLongPressProduct}
               />
             )}
@@ -1186,30 +1210,47 @@ function App() {
             <div className="space-y-4">
               <div className="space-y-2">
                 <label className="text-sm font-medium">Unit</label>
-                <div className="flex gap-2">
-                  <Button
-                    variant={editItemForm.unit === 'PCS' ? 'default' : 'outline'}
-                    onClick={() => {
-                      const basePrice = selectedItemForUnit.price || selectedItemForUnit.rate || selectedItemForUnit.selling_price || 0
-                      const adjustedPrice = taxMode === "inclusive" ? basePrice * 1.15 : basePrice
-                      setEditItemForm({...editItemForm, unit: 'PCS', price: adjustedPrice})
-                    }}
-                    className="flex-1"
-                  >
-                    PCS
-                  </Button>
-                  <Button
-                    variant={editItemForm.unit === 'CTN' ? 'default' : 'outline'}
-                    onClick={() => {
-                      const basePrice = selectedItemForUnit.price || selectedItemForUnit.rate || selectedItemForUnit.selling_price || 0
-                      const adjustedPrice = taxMode === "inclusive" ? (basePrice * 12) * 1.15 : basePrice * 12
-                      setEditItemForm({...editItemForm, unit: 'CTN', price: adjustedPrice})
-                    }}
-                    className="flex-1"
-                  >
-                    CTN
-                  </Button>
-                </div>
+                {isConvertibleUnit(selectedItemForUnit) ? (
+                  // Show unit toggle for convertible units
+                  <div className="flex gap-2">
+                    <Button
+                      variant={editItemForm.unit === 'PCS' ? 'default' : 'outline'}
+                      onClick={() => {
+                        const basePrice = selectedItemForUnit.price || selectedItemForUnit.rate || selectedItemForUnit.selling_price || 0
+                        const adjustedPrice = taxMode === "inclusive" ? basePrice * 1.15 : basePrice
+                        setEditItemForm({...editItemForm, unit: 'PCS', price: adjustedPrice})
+                      }}
+                      className="flex-1"
+                    >
+                      PCS
+                    </Button>
+                    <Button
+                      variant={editItemForm.unit === 'CTN' ? 'default' : 'outline'}
+                      onClick={() => {
+                        const basePrice = selectedItemForUnit.price || selectedItemForUnit.rate || selectedItemForUnit.selling_price || 0
+                        const adjustedPrice = taxMode === "inclusive" ? (basePrice * 12) * 1.15 : basePrice * 12
+                        setEditItemForm({...editItemForm, unit: 'CTN', price: adjustedPrice})
+                      }}
+                      className="flex-1"
+                    >
+                      CTN
+                    </Button>
+                  </div>
+                ) : (
+                  // Show only stored unit for non-convertible units
+                  <div className="flex gap-2">
+                    <Button
+                      variant="default"
+                      disabled
+                      className="flex-1"
+                    >
+                      {selectedItemForUnit.storedUnit || selectedItemForUnit.defaultUnit || 'UNIT'}
+                    </Button>
+                    <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground bg-muted rounded-md px-3 py-2">
+                      No conversion available
+                    </div>
+                  </div>
+                )}
               </div>
               
               <div className="space-y-2">
@@ -1379,6 +1420,18 @@ function App() {
         }}
         product={selectedProductForSales}
         selectedCustomer={selectedCustomer}
+        backendUrl={BACKEND_URL}
+      />
+
+      {/* Product Purchase History Modal */}
+      <ProductPurchaseHistory 
+        isOpen={showProductPurchases}
+        onClose={() => {
+          setShowProductPurchases(false);
+          setSelectedProductForPurchases(null);
+        }}
+        product={selectedProductForPurchases}
+        selectedVendor={null} // TODO: Add vendor selection similar to customer
         backendUrl={BACKEND_URL}
       />
     </div>

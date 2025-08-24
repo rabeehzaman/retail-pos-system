@@ -230,8 +230,13 @@ app.get('/', (req, res) => {
                 <li>/auth/login - Start OAuth flow</li>
                 <li>/api/items - Fetch products (requires auth)</li>
                 <li>/api/customers - Fetch customers (requires auth)</li>
+                <li>/api/vendors - Fetch vendors (requires auth)</li>
                 <li>/api/branches - Fetch branches (requires auth)</li>
                 <li>/api/invoices - Create invoice (POST, requires auth)</li>
+                <li>/api/products/:id/sales - Get product sales history</li>
+                <li>/api/products/:id/purchases - Get product purchase history</li>
+                <li>/api/vendors/:id/bills - Get vendor bills</li>
+                <li>/api/bills/:id/details - Get bill details</li>
             </ul>
         </body>
         </html>
@@ -538,14 +543,27 @@ function getPiecesPerCarton(unit) {
     }
     
     // Special handling for specific units
-    if (unit.toUpperCase() === 'CTN') {
+    const upperUnit = unit.toUpperCase();
+    
+    if (upperUnit === 'CTN') {
         console.log('[UOM] Plain CTN found - no piece conversion available');
         return 0;
     }
     
-    if (unit.toUpperCase() === 'BAG(8)') {
+    if (upperUnit === 'BAG(8)') {
         console.log('[UOM] BAG(8) = 8 pieces per bag');
         return 8;
+    }
+    
+    if (upperUnit === 'BAG(4)') {
+        console.log('[UOM] BAG(4) = 4 pieces per bag');
+        return 4;
+    }
+    
+    // Units that are sold as-is (no conversion)
+    if (['PIECES', 'RAFTHA', 'OUTER'].includes(upperUnit)) {
+        console.log(`[UOM] Non-convertible unit ${unit} found - sold as-is`);
+        return 1;
     }
     
     console.log(`[UOM] Unknown unit pattern: ${unit}, defaulting to 1`);
@@ -743,6 +761,83 @@ app.get('/api/customers', async (req, res) => {
         // Detailed error response for debugging
         const errorDetails = {
             error: 'Failed to fetch customers',
+            details: {
+                message: error.message,
+                status: error.response?.status,
+                statusText: error.response?.statusText,
+                data: error.response?.data,
+                url: `${ZOHO_BOOKS_API_URL}/contacts`,
+                organizationId: process.env.ZOHO_ORGANIZATION_ID,
+                hasToken: !!accessToken,
+                tokenExpiresIn: tokenExpiresAt ? Math.max(0, Math.floor((tokenExpiresAt - Date.now()) / 1000)) : null
+            }
+        };
+        
+        res.status(500).json(errorDetails);
+    }
+});
+
+// Get vendors from Zoho Books
+app.get('/api/vendors', async (req, res) => {
+    console.log('\n========== FETCHING VENDORS ==========');
+    try {
+        await ensureValidToken();
+        
+        const { search } = req.query;
+        
+        // Fetch all pages of vendors
+        let allVendors = [];
+        let page = 1;
+        let hasMorePages = true;
+        
+        while (hasMorePages) {
+            console.log(`[API] Fetching vendors page ${page}...`);
+            
+            const params = {
+                organization_id: process.env.ZOHO_ORGANIZATION_ID,
+                contact_type: 'vendor',
+                per_page: 200, // Max per page for Zoho Books
+                page: page
+            };
+            
+            // Add search parameter if provided
+            if (search && search.trim()) {
+                params.search_text = search.trim();
+                console.log(`[API] Searching for: "${search.trim()}"`);
+            }
+            
+            const response = await axios.get(`${ZOHO_BOOKS_API_URL}/contacts`, {
+                headers: {
+                    'Authorization': `Zoho-oauthtoken ${accessToken}`
+                },
+                params: params
+            });
+            
+            if (response.data.contacts && response.data.contacts.length > 0) {
+                allVendors = allVendors.concat(response.data.contacts);
+                console.log(`[API] Page ${page}: ${response.data.contacts.length} vendors, Total: ${allVendors.length}`);
+                
+                // Check if there are more pages
+                if (response.data.contacts.length < 200) {
+                    hasMorePages = false;
+                } else {
+                    page++;
+                }
+            } else {
+                hasMorePages = false;
+            }
+        }
+        
+        console.log(`[API] Received ${allVendors.length} vendors from Zoho (${page} pages)`);
+        console.log('========== VENDORS FETCH COMPLETE ==========\n');
+        
+        res.json({ vendors: allVendors });
+    } catch (error) {
+        console.error('Error fetching vendors:', error.response?.data || error);
+        
+        // Detailed error response for debugging
+        const errorDetails = {
+            error: 'Failed to fetch vendors',
             details: {
                 message: error.message,
                 status: error.response?.status,
@@ -1180,6 +1275,282 @@ app.get('/api/products/:productId/sales', async (req, res) => {
     }
 });
 
+// Get product purchase history (last 10 purchases of a specific product)
+app.get('/api/products/:productId/purchases', async (req, res) => {
+    console.log('\n========== FETCHING PRODUCT PURCHASE HISTORY ==========');
+    try {
+        await ensureValidToken();
+        
+        const { productId } = req.params;
+        const { vendor_id } = req.query;
+        
+        console.log('[Product Purchases] Request params:');
+        console.log(`  - Product ID: ${productId}`);
+        console.log(`  - Vendor Filter: ${vendor_id || 'none'}`);
+        
+        // Build query parameters for bills containing this item
+        const params = {
+            organization_id: process.env.ZOHO_ORGANIZATION_ID,
+            per_page: 50, // Get more bills to search through
+            page: 1,
+            sort_column: 'date',
+            sort_order: 'D' // Descending (newest first)
+        };
+        
+        // Optionally filter by vendor
+        if (vendor_id && vendor_id !== 'undefined') {
+            params.vendor_id = vendor_id;
+            console.log(`[Product Purchases] Also filtering by vendor: ${vendor_id}`);
+        }
+        
+        // Fetch bills from Zoho Books
+        const response = await axios.get(`${ZOHO_BOOKS_API_URL}/bills`, {
+            headers: {
+                'Authorization': `Zoho-oauthtoken ${accessToken}`
+            },
+            params: params
+        });
+        
+        const bills = response.data.bills || [];
+        
+        console.log(`[Product Purchases] Found ${bills.length} bills to search through`);
+        
+        // For each bill, we need to get details to find this specific item
+        const purchaseData = [];
+        
+        for (const bill of bills) {
+            try {
+                // Fetch full bill details to get line items
+                const detailResponse = await axios.get(`${ZOHO_BOOKS_API_URL}/bills/${bill.bill_id}`, {
+                    headers: {
+                        'Authorization': `Zoho-oauthtoken ${accessToken}`
+                    },
+                    params: {
+                        organization_id: process.env.ZOHO_ORGANIZATION_ID
+                    }
+                });
+                
+                const fullBill = detailResponse.data.bill;
+                
+                // Find the line item for this product
+                const productLineItem = fullBill.line_items?.find(item => item.item_id === productId);
+                
+                if (productLineItem) {
+                    purchaseData.push({
+                        bill_id: bill.bill_id,
+                        bill_number: bill.bill_number,
+                        date: bill.date,
+                        vendor_id: bill.vendor_id,
+                        vendor_name: bill.vendor_name || 'Unknown Vendor',
+                        quantity: productLineItem.quantity,
+                        unit: productLineItem.unit || 'PCS',
+                        rate: productLineItem.rate,
+                        total: productLineItem.item_total,
+                        status: bill.status,
+                        is_paid: bill.balance === 0 || bill.status === 'paid'
+                    });
+                }
+                
+                // Limit to 10 purchases for performance
+                if (purchaseData.length >= 10) break;
+                
+            } catch (detailError) {
+                console.error(`[Product Purchases] Error fetching bill ${bill.bill_id} details:`, detailError.message);
+            }
+        }
+        
+        console.log(`[Product Purchases] Compiled purchase data for ${purchaseData.length} transactions`);
+        console.log('========== PRODUCT PURCHASE HISTORY FETCHED ==========\n');
+        
+        res.json({
+            success: true,
+            product_id: productId,
+            purchases: purchaseData,
+            total_purchases: purchaseData.length,
+            vendor_filter: vendor_id || null
+        });
+        
+    } catch (error) {
+        console.error('[Product Purchases Error]:', error.response?.data || error.message);
+        res.status(500).json({ 
+            error: 'Failed to fetch product purchase history',
+            details: error.response?.data || error.message
+        });
+    }
+});
+
+// Get vendor bills history 
+app.get('/api/vendors/:vendorId/bills', async (req, res) => {
+    console.log('\n========== FETCHING VENDOR BILLS ==========');
+    try {
+        await ensureValidToken();
+        
+        const { vendorId } = req.params;
+        const { from_date, to_date, page = 1, per_page = 50, status } = req.query;
+        
+        console.log(`[Vendor Bills] Vendor ID: ${vendorId}`);
+        console.log(`[Vendor Bills] Date range: ${from_date || 'any'} to ${to_date || 'any'}`);
+        console.log(`[Vendor Bills] Page: ${page}, Per page: ${per_page}`);
+        
+        // Build query parameters
+        const params = {
+            organization_id: process.env.ZOHO_ORGANIZATION_ID,
+            vendor_id: vendorId,
+            per_page: Math.min(per_page, 200), // Zoho max is 200
+            page: page,
+            sort_column: 'date',
+            sort_order: 'D' // Descending (newest first)
+        };
+        
+        // Add optional filters
+        if (from_date) params.from_date = from_date;
+        if (to_date) params.to_date = to_date;
+        if (status) params.status = status; // draft, open, paid, void, overdue, etc.
+        
+        // Fetch bills from Zoho Books
+        const response = await axios.get(`${ZOHO_BOOKS_API_URL}/bills`, {
+            headers: {
+                'Authorization': `Zoho-oauthtoken ${accessToken}`
+            },
+            params: params
+        });
+        
+        const bills = response.data.bills || [];
+        
+        console.log(`[Vendor Bills] Found ${bills.length} bills`);
+        
+        // Transform bill data for frontend
+        const transformedBills = bills.map(bill => ({
+            bill_id: bill.bill_id,
+            bill_number: bill.bill_number,
+            date: bill.date,
+            due_date: bill.due_date,
+            vendor_name: bill.vendor_name,
+            status: bill.status,
+            total: bill.total,
+            balance: bill.balance,
+            currency_code: bill.currency_code,
+            created_time: bill.created_time,
+            last_modified_time: bill.last_modified_time,
+            // Include line items summary
+            line_items_count: bill.line_items ? bill.line_items.length : 0,
+            // Payment status
+            is_paid: bill.balance === 0,
+            payment_terms: bill.payment_terms,
+            // Additional useful fields
+            reference_number: bill.reference_number,
+            notes: bill.notes
+        }));
+        
+        // Get vendor details for context
+        let vendorDetails = null;
+        if (bills.length > 0) {
+            vendorDetails = {
+                name: bills[0].vendor_name,
+                total_bills: response.data.page_context?.total || bills.length,
+                total_value: bills.reduce((sum, bill) => sum + parseFloat(bill.total || 0), 0)
+            };
+        }
+        
+        console.log('========== VENDOR BILLS FETCHED ==========\n');
+        
+        res.json({
+            success: true,
+            vendor: vendorDetails,
+            bills: transformedBills,
+            pagination: {
+                page: parseInt(page),
+                per_page: parseInt(per_page),
+                total: response.data.page_context?.total || bills.length,
+                has_more_page: response.data.page_context?.has_more_page || false
+            }
+        });
+        
+    } catch (error) {
+        console.error('[Vendor Bills Error]:', error.response?.data || error.message);
+        res.status(500).json({ 
+            error: 'Failed to fetch vendor bills',
+            details: error.response?.data || error.message
+        });
+    }
+});
+
+// Get detailed bill with line items
+app.get('/api/bills/:billId/details', async (req, res) => {
+    console.log('\n========== FETCHING BILL DETAILS ==========');
+    try {
+        await ensureValidToken();
+        
+        const { billId } = req.params;
+        console.log(`[Bill Details] Bill ID: ${billId}`);
+        
+        // Fetch detailed bill from Zoho Books
+        const response = await axios.get(`${ZOHO_BOOKS_API_URL}/bills/${billId}`, {
+            headers: {
+                'Authorization': `Zoho-oauthtoken ${accessToken}`
+            },
+            params: {
+                organization_id: process.env.ZOHO_ORGANIZATION_ID
+            }
+        });
+        
+        const bill = response.data.bill;
+        
+        console.log(`[Bill Details] Bill #${bill.bill_number}`);
+        console.log(`[Bill Details] Line items: ${bill.line_items?.length || 0}`);
+        
+        // Transform for frontend with full details
+        const detailedBill = {
+            ...bill,
+            // Enhanced line items with product details
+            line_items: bill.line_items?.map(item => ({
+                line_item_id: item.line_item_id,
+                item_id: item.item_id,
+                name: item.name,
+                description: item.description,
+                quantity: item.quantity,
+                unit: item.unit,
+                rate: item.rate,
+                discount: item.discount,
+                tax_percentage: item.tax_percentage,
+                item_total: item.item_total,
+                sku: item.sku,
+                // Additional fields for history tracking
+                item_order: item.item_order
+            })),
+            // Vendor information
+            vendor_details: {
+                vendor_id: bill.vendor_id,
+                vendor_name: bill.vendor_name,
+                email: bill.email,
+                billing_address: bill.billing_address
+            },
+            // Payment information
+            payment_details: {
+                payment_terms: bill.payment_terms,
+                payment_terms_label: bill.payment_terms_label,
+                is_paid: bill.balance === 0,
+                payment_made: bill.payment_made,
+                payments: bill.payments || []
+            }
+        };
+        
+        console.log('========== BILL DETAILS FETCHED ==========\n');
+        
+        res.json({
+            success: true,
+            bill: detailedBill
+        });
+        
+    } catch (error) {
+        console.error('[Bill Details Error]:', error.response?.data || error.message);
+        res.status(500).json({ 
+            error: 'Failed to fetch bill details',
+            details: error.response?.data || error.message
+        });
+    }
+});
+
 // ==================== UOM MANAGEMENT ====================
 
 // Initialize UOM handler
@@ -1296,9 +1667,14 @@ app.listen(PORT, () => {
     
     - GET  /api/items        - Fetch products
     - GET  /api/customers    - Fetch customers
+    - GET  /api/vendors      - Fetch vendors
     - GET  /api/branches     - Fetch branches
     - POST /api/invoices     - Create invoice/sale
     - GET  /api/taxes        - Get tax rates
+    - GET  /api/products/:id/sales      - Product sales history
+    - GET  /api/products/:id/purchases  - Product purchase history
+    - GET  /api/vendors/:id/bills       - Vendor bills
+    - GET  /api/bills/:id/details       - Bill details
     ========================================
     `);
 });

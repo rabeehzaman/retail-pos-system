@@ -10,6 +10,7 @@ class UOMHandler {
         // Complete unit conversion mapping from Zoho Books
         this.UNIT_CONVERSION_MAP = {
             "PIECES": "9465000000009224",
+            "C2P": "9465000014396910",
             "C3P": "9465000000016009",
             "C4P": "9465000000009276",
             "C5P": "9465000000009284",
@@ -17,11 +18,13 @@ class UOMHandler {
             "C8P": "9465000000009228",
             "C10P": "9465000000009232",
             "C12P": "9465000000009224",
+            "C-12P": "9465000025261093",
             "C15P": "9465000000016001",
             "C16P": "9465000000009264",
             "C18P": "9465000000009260",
             "C20P": "9465000000009240",
             "C24P": "9465000000009248",
+            "C-24P": "9465000025261136",
             "C25P": "9465000000009256",
             "C26P": "9465000000009288",
             "C30P": "9465000000009252",
@@ -31,6 +34,7 @@ class UOMHandler {
             "C40P": "9465000000009300",
             "C45P": "9465000000016031",
             "C48P": "9465000000009292",
+            "C-48P": "9465000025261140",
             "C50P": "9465000000009268",
             "C60P": "9465000000009244",
             "C72P": "9465000000009272",
@@ -53,10 +57,10 @@ class UOMHandler {
         return this.UNIT_CONVERSION_MAP[unit.toUpperCase()] || null;
     }
 
-    // Parse unit conversion info (C24PCS format)
+    // Parse unit conversion info (C24PCS format, including hyphenated C-24P)
     parseUnitInfo(unit) {
         if (!unit) return null;
-        const match = unit.match(/C(\d+)P(?:CS)?/i);
+        const match = unit.match(/C-?(\d+)P(?:CS)?/i);
         if (match) {
             return {
                 type: 'carton',
@@ -69,7 +73,7 @@ class UOMHandler {
 
     // Check if unit has conversion
     hasUnitConversion(unit) {
-        return /C\d+P(?:CS)?/i.test(unit);
+        return /C-?\d+P(?:CS)?/i.test(unit);
     }
 
     // Get pieces per carton

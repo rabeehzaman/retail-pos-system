@@ -1,6 +1,6 @@
 import React, { memo, useState, useEffect } from 'react'
 import { FixedSizeGrid as Grid, FixedSizeList as List } from 'react-window'
-import { Plus, Package, TrendingUp } from 'lucide-react'
+import { Plus, Package, TrendingUp, TrendingDown } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
 import { Button } from './ui/button'
 import { Badge } from './ui/badge'
@@ -33,7 +33,7 @@ const ProductSkeleton = () => (
 
 // Memoized product card to prevent unnecessary re-renders
 const ProductCard = memo(({ data, columnIndex, rowIndex, style }) => {
-  const { items, columnCount, onAddToCart, formatCurrency, taxMode, onProductSales, selectedIndex, onLongPress } = data
+  const { items, columnCount, onAddToCart, formatCurrency, taxMode, onProductSales, onProductPurchases, selectedIndex, onLongPress } = data
   const index = rowIndex * columnCount + columnIndex
   const item = items[index]
   
@@ -111,9 +111,23 @@ const ProductCard = memo(({ data, columnIndex, rowIndex, style }) => {
                   <TrendingUp className="h-3.5 w-3.5" />
                 </Button>
               )}
+              {onProductPurchases && (
+                <Button 
+                  size="sm" 
+                  variant="ghost" 
+                  className="h-8 flex-1 px-2"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onProductPurchases(item);
+                  }}
+                  title="View Purchase History"
+                >
+                  <TrendingDown className="h-3.5 w-3.5" />
+                </Button>
+              )}
               <Button 
                 size="sm" 
-                className={`h-8 touch-manipulation text-xs ${onProductSales ? 'flex-2' : 'w-full'}`}
+                className={`h-8 touch-manipulation text-xs ${onProductSales || onProductPurchases ? 'flex-2' : 'w-full'}`}
                 variant="default"
                 onClick={(e) => {
                   e.stopPropagation();
@@ -143,6 +157,7 @@ export function VirtualProductGrid({
   containerHeight = 600,
   containerWidth = null,
   onProductSales = null,
+  onProductPurchases = null,
   selectedIndex = -1,
   onLongPress = null
 }) {
@@ -223,6 +238,7 @@ export function VirtualProductGrid({
           height={actualHeight}
           width={actualWidth}
           onProductSales={onProductSales}
+          onProductPurchases={onProductPurchases}
           onLongPress={onLongPress}
         />
       </>
@@ -247,6 +263,7 @@ export function VirtualProductGrid({
           formatCurrency,
           taxMode,
           onProductSales,
+          onProductPurchases,
           selectedIndex,
           onLongPress
         }}
@@ -259,7 +276,7 @@ export function VirtualProductGrid({
 
 // Virtual list component for list view
 const ListItem = memo(({ index, style, data }) => {
-  const { items, onAddToCart, formatCurrency, taxMode, onProductSales, onLongPress } = data
+  const { items, onAddToCart, formatCurrency, taxMode, onProductSales, onProductPurchases, onLongPress } = data
   const item = items[index]
   
   if (!item) return <div style={style} />
@@ -319,6 +336,20 @@ const ListItem = memo(({ index, style, data }) => {
               <TrendingUp className="h-3 w-3" />
             </Button>
           )}
+          {onProductPurchases && (
+            <Button 
+              size="icon" 
+              variant="ghost" 
+              className="h-7 w-7"
+              onClick={(e) => {
+                e.stopPropagation();
+                onProductPurchases(item);
+              }}
+              title="View Purchase History"
+            >
+              <TrendingDown className="h-3 w-3" />
+            </Button>
+          )}
           {item.stock_on_hand && (
             <Badge 
               variant={item.stock_on_hand > 10 ? "success" : "warning"} 
@@ -344,7 +375,7 @@ const ListItem = memo(({ index, style, data }) => {
 
 ListItem.displayName = 'ListItem'
 
-function VirtualList({ items, onAddToCart, formatCurrency, taxMode, height, width, onProductSales, onLongPress }) {
+function VirtualList({ items, onAddToCart, formatCurrency, taxMode, height, width, onProductSales, onProductPurchases, onLongPress }) {
   return (
     <List
       height={height}
@@ -357,6 +388,7 @@ function VirtualList({ items, onAddToCart, formatCurrency, taxMode, height, widt
         formatCurrency,
         taxMode,
         onProductSales,
+        onProductPurchases,
         onLongPress
       }}
     >
