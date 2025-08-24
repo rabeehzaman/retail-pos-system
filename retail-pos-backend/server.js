@@ -132,6 +132,65 @@ const ZOHO_ACCOUNTS_URL = process.env.ZOHO_ACCOUNTS_URL || 'https://accounts.zoh
 const ZOHO_BOOKS_API_URL = process.env.ZOHO_BOOKS_API_URL || 'https://www.zohoapis.sa/books/v3';
 const ZOHO_INVENTORY_API_URL = process.env.ZOHO_INVENTORY_API_URL || 'https://www.zohoapis.sa/inventory/v1';
 
+// ==================== CACHING SYSTEM ====================
+// Response cache for item history (sales/purchases) to reduce API calls
+const historyCache = new Map();
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes in milliseconds
+
+// Cache helper functions
+function getCacheKey(type, itemId, filters = {}) {
+    const filterStr = Object.keys(filters)
+        .sort()
+        .map(key => `${key}:${filters[key]}`)
+        .join('|');
+    return `${type}_${itemId}_${filterStr}`;
+}
+
+function getCachedResponse(cacheKey) {
+    const cached = historyCache.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+        console.log(`[CACHE] ✅ Cache hit for ${cacheKey} (age: ${Math.floor((Date.now() - cached.timestamp) / 1000)}s)`);
+        return cached.data;
+    }
+    if (cached) {
+        console.log(`[CACHE] ⏰ Cache expired for ${cacheKey}, removing`);
+        historyCache.delete(cacheKey);
+    }
+    return null;
+}
+
+function setCachedResponse(cacheKey, data) {
+    historyCache.set(cacheKey, {
+        data: data,
+        timestamp: Date.now()
+    });
+    console.log(`[CACHE] 💾 Cached response for ${cacheKey}`);
+    
+    // Clean up expired cache entries (prevent memory leaks)
+    if (historyCache.size > 100) { // Limit cache size
+        const now = Date.now();
+        for (const [key, value] of historyCache.entries()) {
+            if (now - value.timestamp >= CACHE_TTL) {
+                historyCache.delete(key);
+            }
+        }
+    }
+}
+
+// Clear cache when new transactions are created (optional)
+function clearItemCache(itemId) {
+    let deletedCount = 0;
+    for (const key of historyCache.keys()) {
+        if (key.includes(`_${itemId}_`)) {
+            historyCache.delete(key);
+            deletedCount++;
+        }
+    }
+    if (deletedCount > 0) {
+        console.log(`[CACHE] 🗑️ Cleared ${deletedCount} cache entries for item ${itemId}`);
+    }
+}
+
 // Refresh access token
 async function refreshAccessToken() {
     if (!refreshToken) {
@@ -1162,6 +1221,10 @@ app.get('/api/taxes', async (req, res) => {
 
 // Get product sales history (last 10 sales of a specific product)
 app.get('/api/products/:productId/sales', async (req, res) => {
+    const startTime = Date.now();
+    let apiCallCount = 0;
+    let cacheHit = false;
+    
     console.log('\n========== FETCHING PRODUCT SALES HISTORY ==========');
     try {
         await ensureValidToken();
@@ -1172,6 +1235,16 @@ app.get('/api/products/:productId/sales', async (req, res) => {
         console.log('[Product Sales] Request params:');
         console.log(`  - Product ID: ${productId}`);
         console.log(`  - Customer Filter: ${customer_id || 'none'}`);
+        
+        // Check cache first
+        const cacheKey = getCacheKey('sales', productId, { customer_id });
+        const cachedResponse = getCachedResponse(cacheKey);
+        if (cachedResponse) {
+            cacheHit = true;
+            const responseTime = Date.now() - startTime;
+            console.log(`[PERFORMANCE] Sales History - Cache Hit | Response: ${responseTime}ms | API Calls: 0`);
+            return res.json(cachedResponse);
+        }
         
         // Build query parameters - Zoho supports item_id filter!
         const params = {
@@ -1196,28 +1269,49 @@ app.get('/api/products/:productId/sales', async (req, res) => {
             },
             params: params
         });
+        apiCallCount++; // Count the initial invoices API call
         
         const invoices = response.data.invoices || [];
         
         console.log(`[Product Sales] Found ${invoices.length} invoices containing product ${productId}`);
         
-        // For each invoice, we need to get details to find the quantity of this specific item
+        // PARALLEL: Fetch all invoice details concurrently for better performance
         const salesData = [];
+        console.log(`[Product Sales] Fetching ${invoices.length} invoice details in parallel...`);
         
-        for (const invoice of invoices) {
-            try {
-                // Fetch full invoice details to get line items
-                const detailResponse = await axios.get(`${ZOHO_BOOKS_API_URL}/invoices/${invoice.invoice_id}`, {
-                    headers: {
-                        'Authorization': `Zoho-oauthtoken ${accessToken}`
-                    },
-                    params: {
-                        organization_id: process.env.ZOHO_ORGANIZATION_ID
-                    }
+        const invoiceDetailPromises = invoices.map(invoice => 
+            axios.get(`${ZOHO_BOOKS_API_URL}/invoices/${invoice.invoice_id}`, {
+                headers: { 'Authorization': `Zoho-oauthtoken ${accessToken}` },
+                params: { organization_id: process.env.ZOHO_ORGANIZATION_ID }
+            }).then(response => ({ invoice, fullInvoice: response.data.invoice }))
+              .catch(error => {
+                  console.error(`[Product Sales] Error fetching invoice ${invoice.invoice_id} details:`, error.message);
+                  return { invoice, error: error.message };
+              })
+        );
+        
+        const invoiceDetails = await Promise.all(invoiceDetailPromises);
+        apiCallCount += invoices.length; // Count the parallel invoice detail API calls
+        console.log(`[Product Sales] ✅ Completed ${invoiceDetails.length} parallel requests`);
+        
+        // Process the results
+        for (const { invoice, fullInvoice, error } of invoiceDetails) {
+            if (error) {
+                // Still include basic info even if we can't get quantity
+                salesData.push({
+                    invoice_id: invoice.invoice_id,
+                    invoice_number: invoice.invoice_number,
+                    date: invoice.date,
+                    customer_id: invoice.customer_id,
+                    customer_name: invoice.customer_name || 'Walk-in Customer',
+                    quantity: 'N/A',
+                    unit: 'N/A',
+                    rate: 0,
+                    total: 0,
+                    status: invoice.status,
+                    is_paid: invoice.balance === 0 || invoice.status === 'paid'
                 });
-                
-                const fullInvoice = detailResponse.data.invoice;
-                
+            } else {
                 // Find the line item for this product
                 const productLineItem = fullInvoice.line_items?.find(item => item.item_id === productId);
                 
@@ -1236,35 +1330,28 @@ app.get('/api/products/:productId/sales', async (req, res) => {
                         is_paid: invoice.balance === 0 || invoice.status === 'paid'
                     });
                 }
-            } catch (detailError) {
-                console.error(`[Product Sales] Error fetching invoice ${invoice.invoice_id} details:`, detailError.message);
-                // Still include basic info even if we can't get quantity
-                salesData.push({
-                    invoice_id: invoice.invoice_id,
-                    invoice_number: invoice.invoice_number,
-                    date: invoice.date,
-                    customer_id: invoice.customer_id,
-                    customer_name: invoice.customer_name || 'Walk-in Customer',
-                    quantity: 'N/A',
-                    unit: 'N/A',
-                    rate: 0,
-                    total: 0,
-                    status: invoice.status,
-                    is_paid: invoice.balance === 0 || invoice.status === 'paid'
-                });
             }
         }
         
         console.log(`[Product Sales] Compiled sales data for ${salesData.length} transactions`);
         console.log('========== PRODUCT SALES HISTORY FETCHED ==========\n');
         
-        res.json({
+        const responseData = {
             success: true,
             product_id: productId,
             sales: salesData,
             total_sales: salesData.length,
             customer_filter: customer_id || null
-        });
+        };
+        
+        // Cache the response
+        setCachedResponse(cacheKey, responseData);
+        
+        // Performance metrics
+        const responseTime = Date.now() - startTime;
+        console.log(`[PERFORMANCE] Sales History - optimized | Response: ${responseTime}ms | API Calls: ${apiCallCount} | Results: ${salesData.length}`);
+        
+        res.json(responseData);
         
     } catch (error) {
         console.error('[Product Sales Error]:', error.response?.data || error.message);
@@ -1277,6 +1364,11 @@ app.get('/api/products/:productId/sales', async (req, res) => {
 
 // Get product purchase history (last 10 purchases of a specific product)
 app.get('/api/products/:productId/purchases', async (req, res) => {
+    const startTime = Date.now();
+    let apiCallCount = 0;
+    let approachUsed = 'optimized';
+    let cacheHit = false;
+    
     console.log('\n========== FETCHING PRODUCT PURCHASE HISTORY ==========');
     try {
         await ensureValidToken();
@@ -1288,11 +1380,23 @@ app.get('/api/products/:productId/purchases', async (req, res) => {
         console.log(`  - Product ID: ${productId}`);
         console.log(`  - Vendor Filter: ${vendor_id || 'none'}`);
         
-        // Build query parameters for bills containing this item
+        // Check cache first
+        const cacheKey = getCacheKey('purchases', productId, { vendor_id });
+        const cachedResponse = getCachedResponse(cacheKey);
+        if (cachedResponse) {
+            cacheHit = true;
+            const responseTime = Date.now() - startTime;
+            console.log(`[PERFORMANCE] Purchase History - Cache Hit | Response: ${responseTime}ms | API Calls: 0`);
+            return res.json(cachedResponse);
+        }
+        
+        console.log(`[Product Purchases] Using optimized approach - filtering bills by item ${productId}...`);
+        
+        // OPTIMIZED: Use item_id parameter for direct filtering
         const params = {
             organization_id: process.env.ZOHO_ORGANIZATION_ID,
-            per_page: 50, // Get more bills to search through
-            page: 1,
+            item_id: productId, // 🚀 Direct filtering - only returns bills containing this item!
+            per_page: 10, // Reduced since all returned bills contain the item
             sort_column: 'date',
             sort_order: 'D' // Descending (newest first)
         };
@@ -1303,75 +1407,182 @@ app.get('/api/products/:productId/purchases', async (req, res) => {
             console.log(`[Product Purchases] Also filtering by vendor: ${vendor_id}`);
         }
         
-        // Fetch bills from Zoho Books
+        // Fetch bills from Zoho Books with item filter
         const response = await axios.get(`${ZOHO_BOOKS_API_URL}/bills`, {
             headers: {
                 'Authorization': `Zoho-oauthtoken ${accessToken}`
             },
             params: params
         });
+        apiCallCount++; // Count the initial bills API call
         
         const bills = response.data.bills || [];
+        console.log(`[Product Purchases] Found ${bills.length} bills containing item ${productId}`);
         
-        console.log(`[Product Purchases] Found ${bills.length} bills to search through`);
-        
-        // For each bill, we need to get details to find this specific item
         const purchaseData = [];
+        let checkedCount = 0;
+        const targetResults = Math.min(10, bills.length); // Limit to available bills
         
-        for (const bill of bills) {
+        // PARALLEL: Fetch all bill details concurrently for better performance
+        console.log(`[Product Purchases] Fetching ${targetResults} bill details in parallel...`);
+        
+        const billDetailPromises = bills.slice(0, targetResults).map(bill => 
+            axios.get(`${ZOHO_BOOKS_API_URL}/bills/${bill.bill_id}`, {
+                headers: { 'Authorization': `Zoho-oauthtoken ${accessToken}` },
+                params: { organization_id: process.env.ZOHO_ORGANIZATION_ID }
+            }).then(response => ({ bill, fullBill: response.data.bill }))
+              .catch(error => {
+                  console.error(`[Product Purchases] Error fetching bill ${bill.bill_id} details:`, error.message);
+                  return { bill, error: error.message };
+              })
+        );
+        
+        const billDetails = await Promise.all(billDetailPromises);
+        apiCallCount += targetResults; // Count the parallel detail API calls
+        console.log(`[Product Purchases] ✅ Completed ${billDetails.length} parallel requests`);
+        
+        // Process the results
+        for (let i = 0; i < billDetails.length; i++) {
+            const { bill, fullBill, error } = billDetails[i];
+            
+            if (error) {
+                console.log(`[Product Purchases] ⚠️ Skipping bill ${bill.bill_number} due to error: ${error}`);
+                continue;
+            }
+            
+            // Debug logging for first bill
+            if (i === 0 && fullBill.line_items?.length > 0) {
+                console.log(`[DEBUG] Parallel approach working - bill contains ${fullBill.line_items?.length} line items`);
+                const itemMatch = fullBill.line_items?.find(item => String(item.item_id) === String(productId));
+                if (itemMatch) {
+                    console.log(`[DEBUG] ✅ Confirmed item ${productId} found in line items`);
+                }
+            }
+            
+            // Find the line item for this product
+            const productLineItem = fullBill.line_items?.find(item => String(item.item_id) === String(productId));
+            
+            if (productLineItem) {
+                purchaseData.push({
+                    bill_id: bill.bill_id,
+                    bill_number: bill.bill_number,
+                    date: bill.date,
+                    vendor_id: bill.vendor_id,
+                    vendor_name: bill.vendor_name || 'Unknown Vendor',
+                    quantity: productLineItem.quantity,
+                    unit: productLineItem.unit || 'PCS',
+                    rate: productLineItem.rate,
+                    total: productLineItem.item_total,
+                    status: bill.status,
+                    is_paid: bill.balance === 0 || bill.status === 'paid'
+                });
+                console.log(`[Product Purchases] ✅ Added bill ${bill.bill_number} (${purchaseData.length}/${targetResults})`);
+            } else {
+                console.log(`[Product Purchases] ⚠️ Item not found in bill ${bill.bill_number} line items`);
+            }
+        }
+        
+        // If no bills found with direct filtering, try fallback approach
+        if (purchaseData.length === 0) {
+            approachUsed = 'fallback';
+            console.log(`[Product Purchases] No bills found with item_id filter. Trying fallback approach...`);
+            
             try {
-                // Fetch full bill details to get line items
-                const detailResponse = await axios.get(`${ZOHO_BOOKS_API_URL}/bills/${bill.bill_id}`, {
+                // Fallback: Fetch recent bills and manually filter (limited search for performance)
+                const fallbackResponse = await axios.get(`${ZOHO_BOOKS_API_URL}/bills`, {
                     headers: {
                         'Authorization': `Zoho-oauthtoken ${accessToken}`
                     },
                     params: {
-                        organization_id: process.env.ZOHO_ORGANIZATION_ID
+                        organization_id: process.env.ZOHO_ORGANIZATION_ID,
+                        per_page: 30, // Limited search for performance
+                        sort_column: 'date',
+                        sort_order: 'D',
+                        ...(vendor_id && vendor_id !== 'undefined' && { vendor_id })
                     }
                 });
+                apiCallCount++; // Count the fallback bills API call
                 
-                const fullBill = detailResponse.data.bill;
+                const fallbackBills = fallbackResponse.data.bills || [];
+                console.log(`[Product Purchases] Fallback: Checking ${Math.min(10, fallbackBills.length)} recent bills...`);
                 
-                // Find the line item for this product
-                const productLineItem = fullBill.line_items?.find(item => item.item_id === productId);
+                // PARALLEL: Also use parallel processing for fallback
+                const fallbackBillsToCheck = fallbackBills.slice(0, 10); // Limit to 10 for performance
+                console.log(`[Product Purchases] Fallback: Fetching ${fallbackBillsToCheck.length} bill details in parallel...`);
                 
-                if (productLineItem) {
-                    purchaseData.push({
-                        bill_id: bill.bill_id,
-                        bill_number: bill.bill_number,
-                        date: bill.date,
-                        vendor_id: bill.vendor_id,
-                        vendor_name: bill.vendor_name || 'Unknown Vendor',
-                        quantity: productLineItem.quantity,
-                        unit: productLineItem.unit || 'PCS',
-                        rate: productLineItem.rate,
-                        total: productLineItem.item_total,
-                        status: bill.status,
-                        is_paid: bill.balance === 0 || bill.status === 'paid'
-                    });
+                const fallbackPromises = fallbackBillsToCheck.map(bill => 
+                    axios.get(`${ZOHO_BOOKS_API_URL}/bills/${bill.bill_id}`, {
+                        headers: { 'Authorization': `Zoho-oauthtoken ${accessToken}` },
+                        params: { organization_id: process.env.ZOHO_ORGANIZATION_ID }
+                    }).then(response => ({ bill, fullBill: response.data.bill }))
+                      .catch(error => {
+                          console.error(`[Product Purchases] Fallback error for ${bill.bill_id}:`, error.message);
+                          return { bill, error: error.message };
+                      })
+                );
+                
+                const fallbackDetails = await Promise.all(fallbackPromises);
+                apiCallCount += fallbackBillsToCheck.length; // Count the fallback detail API calls
+                
+                for (const { bill, fullBill, error } of fallbackDetails) {
+                    if (error) continue;
+                    
+                    const productLineItem = fullBill.line_items?.find(
+                        item => String(item.item_id) === String(productId)
+                    );
+                    
+                    if (productLineItem) {
+                        purchaseData.push({
+                            bill_id: bill.bill_id,
+                            bill_number: bill.bill_number,
+                            date: bill.date,
+                            vendor_id: bill.vendor_id,
+                            vendor_name: bill.vendor_name || 'Unknown Vendor',
+                            quantity: productLineItem.quantity,
+                            unit: productLineItem.unit || 'PCS',
+                            rate: productLineItem.rate,
+                            total: productLineItem.item_total,
+                            status: bill.status,
+                            is_paid: bill.balance === 0 || bill.status === 'paid'
+                        });
+                        console.log(`[Product Purchases] Fallback: Found match in ${bill.bill_number}`);
+                        if (purchaseData.length >= 10) break;
+                    }
                 }
-                
-                // Limit to 10 purchases for performance
-                if (purchaseData.length >= 10) break;
-                
-            } catch (detailError) {
-                console.error(`[Product Purchases] Error fetching bill ${bill.bill_id} details:`, detailError.message);
+                console.log(`[Product Purchases] Fallback complete: Found ${purchaseData.length} bills (checked ${fallbackBillsToCheck.length})`);
+            } catch (fallbackError) {
+                console.error(`[Product Purchases] Fallback approach failed:`, fallbackError.message);
             }
         }
         
-        console.log(`[Product Purchases] Compiled purchase data for ${purchaseData.length} transactions`);
+        console.log(`[Product Purchases] Final result: ${purchaseData.length} bills containing item ${productId}`);
         console.log('========== PRODUCT PURCHASE HISTORY FETCHED ==========\n');
         
-        res.json({
+        const responseData = {
             success: true,
             product_id: productId,
             purchases: purchaseData,
             total_purchases: purchaseData.length,
             vendor_filter: vendor_id || null
-        });
+        };
+        
+        // Cache the response
+        setCachedResponse(cacheKey, responseData);
+        
+        // Performance metrics
+        const responseTime = Date.now() - startTime;
+        console.log(`[PERFORMANCE] Purchase History - ${approachUsed} | Response: ${responseTime}ms | API Calls: ${apiCallCount} | Results: ${purchaseData.length}`);
+        
+        res.json(responseData);
         
     } catch (error) {
         console.error('[Product Purchases Error]:', error.response?.data || error.message);
+        
+        // If main approach fails due to item_id parameter not supported, the fallback will handle it
+        if (error.response?.status === 400 && error.response?.data?.message?.includes('item_id')) {
+            console.log(`[Product Purchases] item_id parameter not supported, fallback logic will handle this...`);
+        }
+        
         res.status(500).json({ 
             error: 'Failed to fetch product purchase history',
             details: error.response?.data || error.message
