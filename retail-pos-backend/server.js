@@ -593,8 +593,8 @@ function getPiecesPerCarton(unit) {
         return 1;
     }
     
-    // Handle patterns like C6P, C12P
-    const match = unit.match(/C(\d+)P/i);
+    // Handle patterns like C6P, C12P, C-12P, C-24P
+    const match = unit.match(/C-?(\d+)P/i);
     if (match) {
         const pieces = parseInt(match[1]);
         console.log(`[UOM] Found pattern ${unit} = ${pieces} pieces per carton`);
